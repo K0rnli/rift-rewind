@@ -1,4 +1,4 @@
-import { getPerkImageUrl, getPerkName, useImageSize, getSizeClasses, getPerkStyleImageUrl, getPerkStyleName, getPerkDescription, getPerkStyleDescription, useImageContext } from "@/app/context/imageHelper";
+import { getPerkImageUrl, getPerkName, getSizeClasses, getPerkStyleImageUrl, getPerkStyleName, getPerkDescription, getPerkStyleDescription, useImageContext } from "@/app/context/imageHelper";
 import { parsePerkDescription } from "@/lib/textUtils";
 
 export function PerkDisplay({ perkId , size = 48 }: { perkId: number, size?: 16 | 24 | 32 | 48 | 64 }) {

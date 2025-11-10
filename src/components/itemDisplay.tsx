@@ -1,11 +1,12 @@
-import { getItemImageUrl, getItemName, getItemDescription, useImageSize, getSizeClasses } from "@/app/context/imageHelper";
+import { getItemImageUrl, getItemName, getItemDescription, getSizeClasses, useImageContext } from "@/app/context/imageHelper";
 import { parseItemDescription } from "@/lib/textUtils";
 
 export function ItemDisplay({ itemId , size = 48 }: { itemId: number, size: 16 | 32 | 48 | 64 }) {
-    const itemImageUrl = getItemImageUrl(itemId);
-    const itemName = getItemName(itemId);
+    const { itemImageMap } = useImageContext();
+    const itemImageUrl = getItemImageUrl(itemId, itemImageMap);
+    const itemName = getItemName(itemId, itemImageMap);
     const sizeClasses = getSizeClasses(size);
-    const itemDescription = getItemDescription(itemId);
+    const itemDescription = getItemDescription(itemId, itemImageMap);
     
     if (itemId === 0) {
         return (

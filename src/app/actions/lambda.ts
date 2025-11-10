@@ -3,17 +3,17 @@
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 
 const lambdaClient = new LambdaClient({
-  region: process.env.AWS_REGION || '',
+  region: process.env.REGION || '',
   credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+    accessKeyId: process.env.ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.SECRET_ACCESS_KEY || '',
   },
 });
 
 export async function invokeLambda(
   functionName: string,
-  payload: any = {}
-): Promise<any> {
+  payload: Record<string, unknown> = {}
+): Promise<unknown> {
   try {
     const command = new InvokeCommand({
       FunctionName: functionName,
@@ -40,8 +40,12 @@ export interface GameQuestionResponse {
     timestamp: number;
     type: string;
     eventType: 'game' | 'skill' | 'kill' | 'level' | 'item' | 'feat';
-    data: any;
+    data: unknown;
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export async function askGameQuestion(
@@ -58,30 +62,37 @@ export async function askGameQuestion(
     const result = await invokeLambda(functionName, payload);
     
     // Handle different response formats
-    if (result.errorMessage) {
+    if (isRecord(result) && typeof result.errorMessage === 'string') {
       throw new Error(result.errorMessage);
     }
     
-    if (result.body) {
+    if (isRecord(result) && result.body) {
       // If Lambda returns a body (API Gateway format)
       const parsedBody = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-      return {
-        response: parsedBody.response || parsedBody.answer || JSON.stringify(parsedBody),
-        selectedEvent: parsedBody.selectedEvent
-      };
+      if (isRecord(parsedBody)) {
+        return {
+          response: (typeof parsedBody.response === 'string' ? parsedBody.response : '') ||
+                   (typeof parsedBody.answer === 'string' ? parsedBody.answer : '') ||
+                   JSON.stringify(parsedBody),
+          selectedEvent: isRecord(parsedBody.selectedEvent) ? parsedBody.selectedEvent as GameQuestionResponse['selectedEvent'] : undefined
+        };
+      }
     }
     
-    if (result.response || result.answer) {
+    if (isRecord(result) && (result.response || result.answer)) {
       return {
-        response: result.response || result.answer,
-        selectedEvent: result.selectedEvent
+        response: (typeof result.response === 'string' ? result.response : '') ||
+                 (typeof result.answer === 'string' ? result.answer : ''),
+        selectedEvent: isRecord(result.selectedEvent) ? result.selectedEvent as GameQuestionResponse['selectedEvent'] : undefined
       };
     }
     
     // Fallback to stringifying the entire result
     return {
       response: typeof result === 'string' ? result : JSON.stringify(result),
-      selectedEvent: result.selectedEvent
+      selectedEvent: isRecord(result) && isRecord(result.selectedEvent) 
+        ? result.selectedEvent as GameQuestionResponse['selectedEvent'] 
+        : undefined
     };
   } catch (error) {
     console.error('Error asking game question:', error);

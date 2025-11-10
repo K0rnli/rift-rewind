@@ -5,11 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
   applyModelState,
   getModelType,
-  setupAnimationMixer,
-  setAnimationPose,
-  getAnimationData,
-  collectSelectableObjects,
-  ModelStateConfig
+  setupAnimationMixer
 } from './sceneInitializer';
 import {
   CombinedGameData,
@@ -18,7 +14,10 @@ import {
   SkillEvent,
   LevelEvent,
   ItemEvent,
-  FeatUpdateEvent
+  FeatUpdateEvent,
+  BuildingKillEvent,
+  EliteMonsterKillEvent,
+  ChampionKillEvent
 } from '@/types/combinedGameData';
 
 /**
@@ -389,7 +388,8 @@ export class SceneManager {
     }
 
     // Process all events up to the given timestamp
-    const allEvents: Array<{ timestamp: number; event: any; type: string }> = [];
+    type EventUnion = GameEvent | KillEvent | SkillEvent | LevelEvent | ItemEvent | FeatUpdateEvent;
+    const allEvents: Array<{ timestamp: number; event: EventUnion; type: string }> = [];
 
     // Collect all events
     this.gameData.game_events?.forEach((event) => {
@@ -430,7 +430,7 @@ export class SceneManager {
   /**
    * Handle a specific event
    */
-  handleEvent(eventType: string, event: any): void {
+  handleEvent(eventType: string, event: GameEvent | KillEvent | SkillEvent | LevelEvent | ItemEvent | FeatUpdateEvent): void {
     switch (eventType) {
       case 'kill':
         this.handleKillEvent(event as KillEvent);
@@ -465,37 +465,39 @@ export class SceneManager {
       'Player 1', 'Player 2', 'Player 3', 'Player 4', 'Player 5', 'Player 6', 'Player 7', 'Player 8', 'Player 9', 'Player 10']);
     switch (event.type) {
       case 'BUILDING_KILL':
-        this.handleBuildingKill(event as any);
+        this.handleBuildingKill(event as BuildingKillEvent);
         if (event.buildingType === 'TOWER_BUILDING') {
             // Find the appropriate turret
-            let modelName = this.getTurretName(event.teamId, event.towerType, event.laneType, event.position) || '';
+            const modelName = this.getTurretName(event.teamId, event.towerType, event.laneType, event.position) || '';
             this.setCameraPositionModel(modelName);
             console.log('Updating player offset for model:', modelName);
             this.updatePlayerOffset(modelName, event.killerId);
           } else if (event.buildingType === 'INHIBITOR_BUILDING') {
             // Find the appropriate inhibitor
-            let modelName = this.getInhibitorName(event.teamId, event.laneType) || '';
+            const modelName = this.getInhibitorName(event.teamId, event.laneType) || '';
             this.setCameraPositionModel(modelName);
           }
         break;
       case 'ELITE_MONSTER_KILL':
-        this.handleMonsterKill(event as any);
+        this.handleMonsterKill(event as EliteMonsterKillEvent);
         break;
       case 'CHAMPION_KILL':
-        this.handleChampionKill(event as any);
+        this.handleChampionKill(event as ChampionKillEvent);
         break;
       case 'CHAMPION_SPECIAL_KILL':
         // Champion kills don't affect scene models directly
         break;
       default:
-        console.warn(`Unhandled kill event type: ${(event as any).type}`);
+        // Handle any other kill event types
+        const unhandledEvent = event as KillEvent;
+        console.warn(`Unhandled kill event type: ${unhandledEvent.type}`);
     }
   }
 
   /**
    * Handle building kill events
    */
-  private handleBuildingKill(event: any): void {
+  private handleBuildingKill(event: BuildingKillEvent): void {
     const { buildingType, towerType, laneType, teamId } = event;
     if (buildingType === 'TOWER_BUILDING') {
       // Find the appropriate turret
@@ -515,7 +517,7 @@ export class SceneManager {
   /**
    * Handle monster kill events
    */
-  private handleMonsterKill(event: any): void {
+  private handleMonsterKill(event: EliteMonsterKillEvent): void {
     const { monsterType, monsterSubType } = event;
 
     let modelType: string | null = null;
@@ -555,16 +557,18 @@ export class SceneManager {
       });
     }
   }
-  private handleChampionKill(event: any): void {
+  private handleChampionKill(event: ChampionKillEvent): void {
     console.log('Champion kill event:', event);
     const victimId = event.victimId;
     const killerId = event.killerId;
     console.log('Victim ID:', victimId);
     console.log('Killer ID:', killerId);
     this.updateModelState(`Player ${victimId}`, 'death');
-    this.updateModelPosition(`Player ${victimId}`, -1*event.position.x, event.position.y-100);
-    this.updateModelState(`Player ${killerId}`, 'default');
-    this.updateModelPosition(`Player ${killerId}`, -1*event.position.x, event.position.y+100);
+    if (event.position) {
+      this.updateModelPosition(`Player ${victimId}`, -1*event.position.x, event.position.y-100);
+      this.updateModelState(`Player ${killerId}`, 'default');
+      this.updateModelPosition(`Player ${killerId}`, -1*event.position.x, event.position.y+100);
+    }
     this.setCameraPositionModel(`Player ${killerId}`);
   }
   /**
@@ -592,7 +596,7 @@ export class SceneManager {
   /**
    * Handle skill events
    */
-  private handleSkillEvent(event: SkillEvent): void {
+  private handleSkillEvent(_event: SkillEvent): void {
     // Skill events don't directly affect scene models
     // Could be used for visual effects or champion animations
   }
@@ -600,7 +604,7 @@ export class SceneManager {
   /**
    * Handle level events
    */
-  private handleLevelEvent(event: LevelEvent): void {
+  private handleLevelEvent(_event: LevelEvent): void {
     // Level events don't directly affect scene models
     // Could be used for visual effects or champion animations
   }
@@ -608,14 +612,14 @@ export class SceneManager {
   /**
    * Handle item events
    */
-  private handleItemEvent(event: ItemEvent): void {
+  private handleItemEvent(_event: ItemEvent): void {
     // Item events don't directly affect scene models
   }
 
   /**
    * Handle feat events
    */
-  private handleFeatEvent(event: FeatUpdateEvent): void {
+  private handleFeatEvent(_event: FeatUpdateEvent): void {
     // Feat events don't directly affect scene models
     // Could be used for visual indicators
   }
@@ -732,7 +736,7 @@ export class SceneManager {
 
   updatePlayerOffset(modelName: string, playerId: number): void {
     console.log('Updating player offset for model:', modelName);
-    let { x, y } = this.playerPositionsOffsets[modelName];
+    const { x, y } = this.playerPositionsOffsets[modelName];
     this.updateModelPosition(`Player ${playerId}`, x, y);
     this.updateModelState(`Player ${playerId}`, 'default');
   }
@@ -772,13 +776,13 @@ export class SceneManager {
     const buildingEvents = this.gameData?.kill_events?.filter((event) => event.timestamp <= timestamp && event.type === 'BUILDING_KILL' && event.buildingType === 'TOWER_BUILDING');
     if (buildingEvents) {
       buildingEvents.forEach((event) => {
-        this.handleBuildingKill(event as any);
+        this.handleBuildingKill(event as BuildingKillEvent);
       });
     }
     const inhibitorEvents = this.gameData?.kill_events?.filter((event) => event.timestamp <= timestamp && event.type === 'BUILDING_KILL' && event.buildingType === 'INHIBITOR_BUILDING');
     if (inhibitorEvents) {
       inhibitorEvents.forEach((event) => {
-        this.handleBuildingKill(event as any);
+        this.handleBuildingKill(event as BuildingKillEvent);
       });
     }
   }

@@ -131,14 +131,14 @@ export default function ProfilePage() {
           {
             "riotId": playerName,
             "region": region,
-            "count": "1"
+            "count": "20"
           }
         )
-        if (lambdaResult.statusCode === 200) {
+        if (lambdaResult && typeof lambdaResult === 'object' && 'statusCode' in lambdaResult && lambdaResult.statusCode === 200) {
           console.log("worked")
-          let name = playerName.toLowerCase()
+          const name = playerName.toLowerCase()
           console.log(name)
-          let rankedData: RankedStats[] = await getJsonFileFromS3(`match-history/players/${name}/ranked/ranks.json`)
+          const rankedData: RankedStats[] = await getJsonFileFromS3(`match-history/players/${name}/ranked/ranks.json`) as RankedStats[]
           for (const ranked of rankedData) {
             if (ranked.queueType === "RANKED_SOLO_5x5") {
               setRankedSolo(ranked)
@@ -176,7 +176,7 @@ export default function ProfilePage() {
           
           setMatchHistory(matchData)
         } else {
-          console.error("Failed to load match history:", lambdaResult.error)
+          console.error("Failed to load match history:", lambdaResult && typeof lambdaResult === 'object' && 'error' in lambdaResult ? lambdaResult.error : 'Unknown error')
         }
       } catch (error) {
         console.error("Failed to load match history:", error)
@@ -203,20 +203,6 @@ export default function ProfilePage() {
     return "text-gray-400"
   }
 
-  const getTierBgColor = (tier: string) => {
-    const tierLower = tier.toLowerCase()
-    if (tierLower.includes("iron")) return "bg-gray-800 border-gray-700"
-    if (tierLower.includes("bronze")) return "bg-amber-900/20 border-amber-800"
-    if (tierLower.includes("silver")) return "bg-gray-800 border-gray-600"
-    if (tierLower.includes("gold")) return "bg-yellow-900/20 border-yellow-700"
-    if (tierLower.includes("platinum")) return "bg-teal-900/20 border-teal-700"
-    if (tierLower.includes("emerald")) return "bg-emerald-900/20 border-emerald-700"
-    if (tierLower.includes("diamond")) return "bg-cyan-900/20 border-cyan-700"
-    if (tierLower.includes("master")) return "bg-purple-900/20 border-purple-700"
-    if (tierLower.includes("grandmaster")) return "bg-red-900/20 border-red-700"
-    if (tierLower.includes("challenger")) return "bg-yellow-900/20 border-yellow-600"
-    return "bg-gray-800 border-gray-700"
-  }
 
   const formatGameDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60)

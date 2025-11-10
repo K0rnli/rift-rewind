@@ -1,11 +1,12 @@
-import { getSummonerImageUrl, getSummonerName, getSizeClasses, getSummonerDescription } from "@/app/context/imageHelper";
+import { getSummonerImageUrl, getSummonerName, getSizeClasses, getSummonerDescription, useImageContext } from "@/app/context/imageHelper";
 import { parsePerkDescription } from "@/lib/textUtils";
 
 export function SummonerDisplay({ summonerId , size = 48 }: { summonerId: number, size?: 16 | 24 | 32 | 48 | 64 }) {
-    const perkImageUrl = getSummonerImageUrl(summonerId);
-    const perkName = getSummonerName(summonerId);
+    const { summonerSpellImageMap } = useImageContext();
+    const perkImageUrl = getSummonerImageUrl(summonerId, summonerSpellImageMap);
+    const perkName = getSummonerName(summonerId, summonerSpellImageMap);
     const sizeClasses = getSizeClasses(size);
-    const perkDescription = getSummonerDescription(summonerId);
+    const perkDescription = getSummonerDescription(summonerId, summonerSpellImageMap);
     
     if (summonerId === 0) {
         return (

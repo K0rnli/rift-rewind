@@ -448,18 +448,14 @@ export const applyModelState = (object: THREE.Object3D, objectName: string, stat
     return;
   }
 
-  const stateConfig = (objectStates as any)[stateName] as ModelStateConfig;
+  const stateConfig = objectStates[stateName] as ModelStateConfig;
   //console.log(`Applying state "${stateName}" to object "${objectName}" (type: "${modelType}")`);
   //console.log('State config:', stateConfig);
   
   // Apply mesh visibility settings
-  let matchedMeshes = 0;
-  let totalMeshes = 0;
-  
   object.traverse((child) => {
     if (child instanceof THREE.Mesh || child instanceof THREE.Group) {
       const meshName = child.name || 'Unnamed';
-      totalMeshes++;
       
       // Get material name for matching
       let materialName = '';
@@ -470,15 +466,12 @@ export const applyModelState = (object: THREE.Object3D, objectName: string, stat
       
       // Try to match by material name first, then by mesh name
       let matchedKey = '';
-      let matchType = '';
       
       // Check if material name matches any state setting
       if (materialName && stateConfig[materialName] !== undefined) {
         matchedKey = materialName;
-        matchType = 'material';
       } else if (stateConfig[meshName] !== undefined) {
         matchedKey = meshName;
-        matchType = 'mesh';
       } else {
         // Try partial matching on material name
         if (materialName) {
@@ -488,7 +481,6 @@ export const applyModelState = (object: THREE.Object3D, objectName: string, stat
           );
           if (matchingKey) {
             matchedKey = matchingKey;
-            matchType = 'material-partial';
           }
         }
         
@@ -500,7 +492,6 @@ export const applyModelState = (object: THREE.Object3D, objectName: string, stat
           );
           if (matchingKey) {
             matchedKey = matchingKey;
-            matchType = 'mesh-partial';
           }
         }
       }
@@ -510,8 +501,7 @@ export const applyModelState = (object: THREE.Object3D, objectName: string, stat
         // Only set visibility if the value is a boolean (not animation config)
         if (typeof value === 'boolean') {
           child.visible = value;
-          matchedMeshes++;
-          //console.log(`✓ ${matchType} match "${meshName}" (material: "${materialName}") -> "${matchedKey}" -> ${child.visible ? 'visible' : 'hidden'}`);
+          //console.log(`✓ match "${meshName}" (material: "${materialName}") -> "${matchedKey}" -> ${child.visible ? 'visible' : 'hidden'}`);
         }
       } else {
         // Default behavior: show if not specified
@@ -520,8 +510,6 @@ export const applyModelState = (object: THREE.Object3D, objectName: string, stat
       }
     }
   });
-
-  //console.log(`Mesh visibility application complete: ${matchedMeshes}/${totalMeshes} meshes matched`);
 
   // Apply animation state if configured
   if (stateConfig.animation) {
@@ -558,8 +546,41 @@ export const applyModelState = (object: THREE.Object3D, objectName: string, stat
 };
 
 // Material detection and analysis functions
+interface MaterialInfo {
+  meshName: string;
+  materialIndex: number;
+  materialType: string;
+  materialName: string;
+  properties: {
+    color: string;
+    transparent: boolean;
+    opacity: number;
+    metalness: number | string;
+    roughness: number | string;
+    emissive: string;
+    emissiveIntensity: number | string;
+    wireframe: boolean | string;
+    side: number | string;
+    alphaTest: number | string;
+    depthTest: boolean | string;
+    depthWrite: boolean | string;
+  };
+  textures: {
+    map: string;
+    normalMap: string;
+    roughnessMap: string;
+    metalnessMap: string;
+    emissiveMap: string;
+    aoMap: string;
+    alphaMap: string;
+    bumpMap: string;
+    displacementMap: string;
+    envMap: string;
+  };
+}
+
 export const detectMaterials = (object: THREE.Object3D) => {
-  const materialInfo: any[] = [];
+  const materialInfo: MaterialInfo[] = [];
   
   object.traverse((child) => {
     if (child instanceof THREE.Mesh && child.material) {
@@ -630,8 +651,36 @@ export const logMaterialInfo = (object: THREE.Object3D, objectName: string = 'Ob
 };
 
 // Model structure and parts detection functions
+interface PartInfo {
+  name: string;
+  type: string;
+  uuid: string;
+  position: { x: number; y: number; z: number };
+  rotation: { x: number; y: number; z: number };
+  scale: { x: number; y: number; z: number };
+  visible: boolean;
+  userData: Record<string, unknown>;
+  isMesh: boolean;
+  isGroup: boolean;
+  isScene: boolean;
+  isLight: boolean;
+  isCamera: boolean;
+  geometry: {
+    type: string | undefined;
+    vertices: number;
+    faces: number;
+  } | null;
+  material: {
+    hasMaterial: boolean;
+    materialCount: number;
+    materialTypes: string[];
+  } | null;
+  childrenCount: number;
+  depth: number;
+}
+
 export const detectModelParts = (object: THREE.Object3D) => {
-  const partsInfo: any[] = [];
+  const partsInfo: PartInfo[] = [];
   
   object.traverse((child) => {
     const info = {
@@ -702,7 +751,7 @@ export const logModelStructure = (object: THREE.Object3D, objectName: string = '
   }
   
   // Group by type
-  const typeGroups: { [key: string]: any[] } = {};
+  const typeGroups: { [key: string]: PartInfo[] } = {};
   parts.forEach(part => {
     if (!typeGroups[part.type]) {
       typeGroups[part.type] = [];
@@ -752,16 +801,29 @@ export const logModelStructure = (object: THREE.Object3D, objectName: string = '
   return parts;
 };
 
-export const getModelHierarchy = (object: THREE.Object3D) => {
-  const hierarchy: any[] = [];
-  
-  const buildHierarchy = (obj: THREE.Object3D, depth: number = 0) => {
-    const node = {
+interface HierarchyNode {
+  name: string;
+  type: string;
+  uuid: string;
+  depth: number;
+  children: HierarchyNode[];
+  hasGeometry: boolean;
+  hasMaterial: boolean;
+  isSelectable: boolean;
+  position: { x: number; y: number; z: number };
+  rotation: { x: number; y: number; z: number };
+  scale: { x: number; y: number; z: number };
+  visible: boolean;
+}
+
+export const getModelHierarchy = (object: THREE.Object3D): HierarchyNode => {
+  const buildHierarchy = (obj: THREE.Object3D, depth: number = 0): HierarchyNode => {
+    const node: HierarchyNode = {
       name: obj.name || 'Unnamed',
       type: obj.type,
       uuid: obj.uuid,
       depth: depth,
-      children: [] as any[],
+      children: [],
       hasGeometry: obj instanceof THREE.Mesh && !!obj.geometry,
       hasMaterial: obj instanceof THREE.Mesh && !!obj.material,
       isSelectable: obj.userData.selectable === true,
@@ -789,7 +851,7 @@ export const logModelHierarchy = (object: THREE.Object3D, objectName: string = '
   console.log(`\n=== Model Hierarchy for ${objectName} ===`);
   const hierarchy = getModelHierarchy(object);
   
-  const printHierarchy = (node: any, indent: string = '') => {
+  const printHierarchy = (node: HierarchyNode, indent: string = '') => {
     const icon = node.hasGeometry ? '📦' : node.children.length > 0 ? '📁' : '📄';
     console.log(`${indent}${icon} ${node.name} (${node.type})`);
     
@@ -803,7 +865,7 @@ export const logModelHierarchy = (object: THREE.Object3D, objectName: string = '
       console.log(`${indent}  👁️ Hidden`);
     }
     
-    node.children.forEach((child: any) => {
+    node.children.forEach((child) => {
       printHierarchy(child, indent + '  ');
     });
   };
@@ -813,10 +875,19 @@ export const logModelHierarchy = (object: THREE.Object3D, objectName: string = '
 };
 
 // Function to check mesh names in a model
+interface UnnamedMeshInfo {
+  uuid: string;
+  type: string;
+  hasGeometry: boolean;
+  hasMaterial: boolean;
+  geometryType: string | undefined;
+  materialType: string | undefined;
+}
+
 export const checkMeshNames = (object: THREE.Object3D, objectName: string = 'Object') => {
   console.log(`\n=== Mesh Names Check for ${objectName} ===`);
   const meshNames: string[] = [];
-  const unnamedMeshes: any[] = [];
+  const unnamedMeshes: UnnamedMeshInfo[] = [];
   
   object.traverse((child) => {
     if (child instanceof THREE.Mesh) {
@@ -898,8 +969,14 @@ export interface ModelAnimationData {
 // Global animation data storage
 export const animationData: { [objectId: string]: ModelAnimationData } = {};
 
+// GLTF loader result type
+interface GLTFResult {
+  animations: THREE.AnimationClip[];
+  scene: THREE.Group;
+}
+
 // Function to detect animations in a GLTF model
-export const detectAnimations = (gltf: any, objectName: string): AnimationInfo[] => {
+export const detectAnimations = (gltf: GLTFResult, _objectName: string): AnimationInfo[] => {
   const animations: AnimationInfo[] = [];
   
   if (gltf.animations && gltf.animations.length > 0) {
@@ -917,7 +994,7 @@ export const detectAnimations = (gltf: any, objectName: string): AnimationInfo[]
 };
 
 // Function to setup animation mixer for an object
-export const setupAnimationMixer = (object: THREE.Object3D, gltf: any, objectName: string): ModelAnimationData => {
+export const setupAnimationMixer = (object: THREE.Object3D, gltf: GLTFResult, objectName: string): ModelAnimationData => {
   const objectId = object.uuid;
   const animations = detectAnimations(gltf, objectName);
   
@@ -1204,11 +1281,11 @@ export const demonstrateAnimationStates = (scene: THREE.Scene) => {
       //console.log('Available states:', Object.keys(objectStates));
       
       // Show animation configuration for each state
-      Object.entries(objectStates).forEach(([stateName, stateConfig]) => {
+      Object.entries(objectStates).forEach(([_stateName, stateConfig]) => {
         if (stateConfig.animation) {
-          //console.log(`  ${stateName}: ${stateConfig.animation.name} at ${(stateConfig.animation.progress * 100).toFixed(0)}% progress`);
+          //console.log(`  ${_stateName}: ${stateConfig.animation.name} at ${(stateConfig.animation.progress * 100).toFixed(0)}% progress`);
         } else {
-          //console.log(`  ${stateName}: No animation configured`);
+          //console.log(`  ${_stateName}: No animation configured`);
         }
       });
     }
@@ -1652,8 +1729,8 @@ export const initializeScene = async (
         //console.log('Camera positioned at:', camera.position);
         resolve();
       },
-      (progress) => {
-        //console.log('Loading progress:', (progress.loaded / progress.total * 100) + '%');
+      (_progress) => {
+        //console.log('Loading progress:', (_progress.loaded / _progress.total * 100) + '%');
       },
       (error) => {
         console.error('Error loading model:', error);

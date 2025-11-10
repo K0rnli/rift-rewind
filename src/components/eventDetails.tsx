@@ -1,8 +1,9 @@
 "use client"
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
+import Image from 'next/image';
 import { Bar, BarChart, XAxis, YAxis } from 'recharts';
 import { TimelineEvent } from './timelineController';
-import { CombinedGameData } from '@/types/combinedGameData';
+import { CombinedGameData, ChampionKillEvent, ChampionSpecialKillEvent, EliteMonsterKillEvent, BuildingKillEvent, SkillEvent, LevelEvent, ItemEvent, FeatUpdateEvent, GameEvent, ItemUndoEvent, ItemPurchasedEvent, ItemSoldEvent, ItemDestroyedEvent } from '@/types/combinedGameData';
 import { ChampionDisplay } from './championDisplay';
 import { ItemDisplay } from './itemDisplay';
 import {
@@ -11,7 +12,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from '@/components/ui/chart';
-import { getChampionImageUrl } from '@/app/context/imageHelper';
+import { getChampionImageUrl, useImageContext } from '@/app/context/imageHelper';
 
 interface EventDetailsProps {
   event: TimelineEvent | null;
@@ -19,93 +20,89 @@ interface EventDetailsProps {
   onClose?: () => void;
 }
 
+interface DamageEntry {
+  participantId: number;
+  totalDamage: number;
+  physicalDamage: number;
+  magicDamage: number;
+  trueDamage: number;
+}
+
+interface DamageDataItem {
+  participant: string;
+  damage: number;
+  physicalDamage: number;
+  magicDamage: number;
+  trueDamage: number;
+  participantId: number;
+  championId: number;
+  teamId: number | undefined;
+}
+
+interface ChampionTickProps {
+  y?: number;
+  payload?: {
+    value: string;
+  };
+  [key: string]: unknown;
+}
+
 export default function EventDetails({ event, gameData, onClose }: EventDetailsProps) {
-  if (!event || !gameData) {
-    return null;
-  }
-
-  const formatTime = (ms: number): string => {
-    const totalSeconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
-
-  const getPlayerName = (id: number) => {
+  const { championImageMap } = useImageContext();
+  
+  const getPlayerName = useCallback((id: number) => {
     return gameData?.match_data?.participants?.find(p => p.participantId === id)?.riotIdGameName || `Player ${id}`;
-  };
+  }, [gameData]);
 
-  const getChampionId = (id: number) => {
+  const getChampionId = useCallback((id: number) => {
     return gameData?.match_data?.participants?.find(p => p.participantId === id)?.championId || -1;
-  };
+  }, [gameData]);
 
-  const getTeamId = (id: number) => {
+  const getTeamId = useCallback((id: number) => {
     return gameData?.match_data?.participants?.find(p => p.participantId === id)?.teamId;
-  };
-
-  const getEventColor = (eventType: string, type: string): string => {
-    switch (eventType) {
-      case 'kill':
-        if (type === 'CHAMPION_KILL') return '#ef4444';
-        if (type === 'CHAMPION_SPECIAL_KILL') return '#f59e0b';
-        if (type === 'ELITE_MONSTER_KILL') return '#8b5cf6';
-        if (type === 'BUILDING_KILL') return '#ec4899';
-        return '#dc2626';
-      case 'skill':
-        return '#3b82f6';
-      case 'level':
-        return '#10b981';
-      case 'item':
-        return '#f59e0b';
-      case 'feat':
-        return '#6366f1';
-      case 'game':
-        if (type === 'GAME_END') return '#000000';
-        if (type === 'PAUSE_END') return '#6b7280';
-        return '#9ca3af';
-      default:
-        return '#6b7280';
-    }
-  };
+  }, [gameData]);
 
   // Memoize damage data calculation to prevent recalculation on every render
-  const damageData = useMemo(() => {
-    if (event?.eventType === 'kill' && event?.type === 'CHAMPION_KILL' && event?.data?.victimDamageReceived) {
-      const damageArray = event.data.victimDamageReceived;
-      return damageArray
-        .map((damage: any) => ({
-          participantId: damage.participantId,
-          totalDamage: (damage.physicalDamage || 0) + (damage.magicDamage || 0) + (damage.trueDamage || 0),
-          physicalDamage: damage.physicalDamage || 0,
-          magicDamage: damage.magicDamage || 0,
-          trueDamage: damage.trueDamage || 0,
-        }))
-        .reduce((acc: any[], curr: any) => {
-          const existing = acc.find((item) => item.participantId === curr.participantId);
-          if (existing) {
-            existing.totalDamage += curr.totalDamage;
-            existing.physicalDamage += curr.physicalDamage;
-            existing.magicDamage += curr.magicDamage;
-            existing.trueDamage += curr.trueDamage;
-          } else {
-            acc.push(curr);
-          }
-          return acc;
-        }, [])
-        .map((item: any) => ({
-          participant: getPlayerName(item.participantId),
-          damage: item.totalDamage,
-          physicalDamage: item.physicalDamage,
-          magicDamage: item.magicDamage,
-          trueDamage: item.trueDamage,
-          participantId: item.participantId,
-          championId: getChampionId(item.participantId),
-          teamId: getTeamId(item.participantId),
-        }))
-        .sort((a: any, b: any) => b.damage - a.damage);
+  const damageData = useMemo((): DamageDataItem[] => {
+    if (event?.eventType === 'kill' && event?.type === 'CHAMPION_KILL') {
+      const killData = event.data as ChampionKillEvent;
+      if (killData.victimDamageReceived) {
+        const damageArray = killData.victimDamageReceived;
+        return damageArray
+          .map((damage): DamageEntry => ({
+            participantId: damage.participantId,
+            totalDamage: (damage.physicalDamage || 0) + (damage.magicDamage || 0) + (damage.trueDamage || 0),
+            physicalDamage: damage.physicalDamage || 0,
+            magicDamage: damage.magicDamage || 0,
+            trueDamage: damage.trueDamage || 0,
+          }))
+          .reduce((acc: DamageEntry[], curr: DamageEntry) => {
+            const existing = acc.find((item) => item.participantId === curr.participantId);
+            if (existing) {
+              existing.totalDamage += curr.totalDamage;
+              existing.physicalDamage += curr.physicalDamage;
+              existing.magicDamage += curr.magicDamage;
+              existing.trueDamage += curr.trueDamage;
+            } else {
+              acc.push(curr);
+            }
+            return acc;
+          }, [])
+          .map((item): DamageDataItem => ({
+            participant: getPlayerName(item.participantId),
+            damage: item.totalDamage,
+            physicalDamage: item.physicalDamage,
+            magicDamage: item.magicDamage,
+            trueDamage: item.trueDamage,
+            participantId: item.participantId,
+            championId: getChampionId(item.participantId),
+            teamId: getTeamId(item.participantId),
+          }))
+          .sort((a, b) => b.damage - a.damage);
+      }
     }
     return [];
-  }, [event?.eventType, event?.type, event?.data?.victimDamageReceived, event?.timestamp, gameData]);
+  }, [event?.eventType, event?.type, event?.timestamp, event?.data, gameData, getChampionId, getPlayerName, getTeamId]);
 
   // Memoize chart config
   const chartConfig = useMemo(() => ({
@@ -128,11 +125,12 @@ export default function EventDetails({ event, gameData, onClose }: EventDetailsP
     if (!damageData || damageData.length === 0) return null;
 
     // Custom tick component for YAxis to display champion images
-    const ChampionTick = ({ y, payload }: any) => {
-      const data = damageData.find((d: any) => d.participant === payload.value);
+    const ChampionTick = ({ y, payload }: ChampionTickProps) => {
+      if (!y || !payload?.value) return null;
+      const data = damageData.find((d) => d.participant === payload.value);
       if (!data) return null;
       
-      const championImageUrl = getChampionImageUrl(data.championId);
+      const championImageUrl = getChampionImageUrl(data.championId, championImageMap);
       const ringColor = data.teamId === 100 ? '#3b82f6' : data.teamId === 200 ? '#ef4444' : '#64748b';
       
       return (
@@ -153,6 +151,8 @@ export default function EventDetails({ event, gameData, onClose }: EventDetailsP
                 <img 
                   src={championImageUrl} 
                   alt={data.participant}
+                  width={32}
+                  height={32}
                   style={{
                     width: '100%',
                     height: '100%',
@@ -197,7 +197,7 @@ export default function EventDetails({ event, gameData, onClose }: EventDetailsP
                 tickMargin={10}
                 axisLine={false}
                 width={50}
-                tick={<ChampionTick />}
+                tick={(props: ChampionTickProps) => <ChampionTick {...props} />}
               />
               <ChartTooltip
                 cursor={false}
@@ -226,16 +226,52 @@ export default function EventDetails({ event, gameData, onClose }: EventDetailsP
         </div>
       </div>
     );
-  }, [damageData, chartConfig, event?.timestamp]);
+  }, [damageData, chartConfig, event?.timestamp, championImageMap]);
+  
+  const formatTime = (ms: number): string => {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const getEventColor = (eventType: string, type: string): string => {
+    switch (eventType) {
+      case 'kill':
+        if (type === 'CHAMPION_KILL') return '#ef4444';
+        if (type === 'CHAMPION_SPECIAL_KILL') return '#f59e0b';
+        if (type === 'ELITE_MONSTER_KILL') return '#8b5cf6';
+        if (type === 'BUILDING_KILL') return '#ec4899';
+        return '#dc2626';
+      case 'skill':
+        return '#3b82f6';
+      case 'level':
+        return '#10b981';
+      case 'item':
+        return '#f59e0b';
+      case 'feat':
+        return '#6366f1';
+      case 'game':
+        if (type === 'GAME_END') return '#000000';
+        if (type === 'PAUSE_END') return '#6b7280';
+        return '#9ca3af';
+      default:
+        return '#6b7280';
+    }
+  };
+  
+  if (!event || !gameData) {
+    return null;
+  }
 
   const renderEventDetails = () => {
-    const { eventType, type, data, timestamp } = event;
+    const { eventType, type, data } = event;
     const color = getEventColor(eventType, type);
 
     switch (eventType) {
       case 'kill':
         if (type === 'CHAMPION_KILL') {
-
+          const championKillData = data as ChampionKillEvent;
           return (
             <div>
               <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '12px', color }}>
@@ -244,32 +280,32 @@ export default function EventDetails({ event, gameData, onClose }: EventDetailsP
               <div style={{ marginBottom: '8px' }}>
                 <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '4px' }}>Killer</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <ChampionDisplay championId={getChampionId(data.killerId)} size={32} teamId={getTeamId(data.killerId)} />
-                  <span>{getPlayerName(data.killerId)}</span>
+                  <ChampionDisplay championId={getChampionId(championKillData.killerId)} size={32} teamId={getTeamId(championKillData.killerId)} />
+                  <span>{getPlayerName(championKillData.killerId)}</span>
                 </div>
               </div>
               <div style={{ marginBottom: '8px' }}>
                 <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '4px' }}>Victim</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <ChampionDisplay championId={getChampionId(data.victimId)} size={32} teamId={getTeamId(data.victimId)} />
-                  <span>{getPlayerName(data.victimId)}</span>
+                  <ChampionDisplay championId={getChampionId(championKillData.victimId)} size={32} teamId={getTeamId(championKillData.victimId)} />
+                  <span>{getPlayerName(championKillData.victimId)}</span>
                 </div>
               </div>
-              {data.bounty !== undefined && (
+              {championKillData.bounty !== undefined && (
                 <div style={{ marginBottom: '8px' }}>
-                  <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>Bounty: {data.bounty} gold</div>
+                  <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>Bounty: {championKillData.bounty} gold</div>
                 </div>
               )}
-              {data.killStreakLength > 0 && (
+              {championKillData.killStreakLength > 0 && (
                 <div style={{ marginBottom: '8px' }}>
-                  <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>Kill Streak: {data.killStreakLength}</div>
+                  <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>Kill Streak: {championKillData.killStreakLength}</div>
                 </div>
               )}
-              {data.assistingParticipantIds && data.assistingParticipantIds.length > 0 && (
+              {championKillData.assistingParticipantIds && championKillData.assistingParticipantIds.length > 0 && (
                 <div style={{ marginBottom: '8px' }}>
                   <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '4px' }}>Assists</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                    {data.assistingParticipantIds.map((id: number) => (
+                    {championKillData.assistingParticipantIds.map((id: number) => (
                       <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <ChampionDisplay championId={getChampionId(id)} size={24} teamId={getTeamId(id)} />
                         <span style={{ fontSize: '11px' }}>{getPlayerName(id)}</span>
@@ -279,50 +315,52 @@ export default function EventDetails({ event, gameData, onClose }: EventDetailsP
                 </div>
               )}
               {DamageChart}
-              {data.position && (
+              {championKillData.position && (
                 <div style={{ marginBottom: '8px' }}>
                   <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>
-                    Position: ({Math.round(data.position.x)}, {Math.round(data.position.y)})
+                    Position: ({Math.round(championKillData.position.x)}, {Math.round(championKillData.position.y)})
                   </div>
                 </div>
               )}
             </div>
           );
         } else if (type === 'CHAMPION_SPECIAL_KILL') {
+          const specialKillData = data as ChampionSpecialKillEvent;
           return (
             <div>
               <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '12px', color }}>
-                {data.killType === 'KILL_FIRST_BLOOD' ? 'First Blood' : 
-                 data.killType === 'KILL_MULTI' ? 
-                   (data.multiKillLength === 2 ? 'Double Kill' :
-                    data.multiKillLength === 3 ? 'Triple Kill' :
-                    data.multiKillLength === 4 ? 'Quadra Kill' :
-                    data.multiKillLength === 5 ? 'Penta Kill' : 'Multi Kill') : 
+                {specialKillData.killType === 'KILL_FIRST_BLOOD' ? 'First Blood' : 
+                 specialKillData.killType === 'KILL_MULTI' ? 
+                   (specialKillData.multiKillLength === 2 ? 'Double Kill' :
+                    specialKillData.multiKillLength === 3 ? 'Triple Kill' :
+                    specialKillData.multiKillLength === 4 ? 'Quadra Kill' :
+                    specialKillData.multiKillLength === 5 ? 'Penta Kill' : 'Multi Kill') : 
                  'Special Kill'}
               </div>
               <div style={{ marginBottom: '8px' }}>
                 <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '4px' }}>Killer</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <ChampionDisplay championId={getChampionId(data.killerId)} size={32} teamId={getTeamId(data.killerId)} />
-                  <span>{getPlayerName(data.killerId)}</span>
+                  <ChampionDisplay championId={getChampionId(specialKillData.killerId)} size={32} teamId={getTeamId(specialKillData.killerId)} />
+                  <span>{getPlayerName(specialKillData.killerId)}</span>
                 </div>
               </div>
-              {data.position && (
+              {specialKillData.position && (
                 <div style={{ marginBottom: '8px' }}>
                   <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>
-                    Position: ({Math.round(data.position.x)}, {Math.round(data.position.y)})
+                    Position: ({Math.round(specialKillData.position.x)}, {Math.round(specialKillData.position.y)})
                   </div>
                 </div>
               )}
             </div>
           );
         } else if (type === 'ELITE_MONSTER_KILL') {
-          const monsterName = data.monsterType === 'DRAGON' 
-            ? (data.monsterSubType || 'Dragon')
-            : data.monsterType === 'RIFTHERALD' ? 'Rift Herald'
-            : data.monsterType === 'BARON_NASHOR' ? 'Baron Nashor'
-            : data.monsterType === 'HORDE' ? 'Void Grub'
-            : data.monsterType;
+          const monsterKillData = data as EliteMonsterKillEvent;
+          const monsterName = monsterKillData.monsterType === 'DRAGON' 
+            ? (monsterKillData.monsterSubType || 'Dragon')
+            : monsterKillData.monsterType === 'RIFTHERALD' ? 'Rift Herald'
+            : monsterKillData.monsterType === 'BARON_NASHOR' ? 'Baron Nashor'
+            : monsterKillData.monsterType === 'HORDE' ? 'Void Grub'
+            : monsterKillData.monsterType;
           
           return (
             <div>
@@ -332,15 +370,15 @@ export default function EventDetails({ event, gameData, onClose }: EventDetailsP
               <div style={{ marginBottom: '8px' }}>
                 <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '4px' }}>Killer</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <ChampionDisplay championId={getChampionId(data.killerId)} size={32} teamId={getTeamId(data.killerId)} />
-                  <span>{getPlayerName(data.killerId)}</span>
+                  <ChampionDisplay championId={getChampionId(monsterKillData.killerId)} size={32} teamId={getTeamId(monsterKillData.killerId)} />
+                  <span>{getPlayerName(monsterKillData.killerId)}</span>
                 </div>
               </div>
-              {data.assistingParticipantIds && data.assistingParticipantIds.length > 0 && (
+              {monsterKillData.assistingParticipantIds && monsterKillData.assistingParticipantIds.length > 0 && (
                 <div style={{ marginBottom: '8px' }}>
                   <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '4px' }}>Assists</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                    {data.assistingParticipantIds.map((id: number) => (
+                    {monsterKillData.assistingParticipantIds.map((id: number) => (
                       <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <ChampionDisplay championId={getChampionId(id)} size={24} teamId={getTeamId(id)} />
                         <span style={{ fontSize: '11px' }}>{getPlayerName(id)}</span>
@@ -349,26 +387,27 @@ export default function EventDetails({ event, gameData, onClose }: EventDetailsP
                   </div>
                 </div>
               )}
-              {data.position && (
+              {monsterKillData.position && (
                 <div style={{ marginBottom: '8px' }}>
                   <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>
-                    Position: ({Math.round(data.position.x)}, {Math.round(data.position.y)})
+                    Position: ({Math.round(monsterKillData.position.x)}, {Math.round(monsterKillData.position.y)})
                   </div>
                 </div>
               )}
             </div>
           );
         } else if (type === 'BUILDING_KILL') {
-          const buildingName = data.buildingType === 'TOWER_BUILDING' 
-            ? (data.towerType === 'NEXUS_TURRET' ? 'Nexus Turret' :
-               data.towerType === 'BASE_TURRET' ? 'Base Turret' :
-               data.towerType === 'INNER_TURRET' ? 'Inner Turret' :
-               data.towerType === 'OUTER_TURRET' ? 'Outer Turret' : 'Turret')
-            : data.buildingType === 'INHIBITOR_BUILDING' ? 'Inhibitor' : 'Building';
+          const buildingKillData = data as BuildingKillEvent;
+          const buildingName = buildingKillData.buildingType === 'TOWER_BUILDING' 
+            ? (buildingKillData.towerType === 'NEXUS_TURRET' ? 'Nexus Turret' :
+               buildingKillData.towerType === 'BASE_TURRET' ? 'Base Turret' :
+               buildingKillData.towerType === 'INNER_TURRET' ? 'Inner Turret' :
+               buildingKillData.towerType === 'OUTER_TURRET' ? 'Outer Turret' : 'Turret')
+            : buildingKillData.buildingType === 'INHIBITOR_BUILDING' ? 'Inhibitor' : 'Building';
           
-          const laneName = data.laneType === 'TOP_LANE' ? 'Top' :
-                          data.laneType === 'MID_LANE' ? 'Mid' :
-                          data.laneType === 'BOT_LANE' ? 'Bot' : '';
+          const laneName = buildingKillData.laneType === 'TOP_LANE' ? 'Top' :
+                          buildingKillData.laneType === 'MID_LANE' ? 'Mid' :
+                          buildingKillData.laneType === 'BOT_LANE' ? 'Bot' : '';
           
           return (
             <div>
@@ -383,15 +422,15 @@ export default function EventDetails({ event, gameData, onClose }: EventDetailsP
               <div style={{ marginBottom: '8px' }}>
                 <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '4px' }}>Killer</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <ChampionDisplay championId={getChampionId(data.killerId)} size={32} teamId={getTeamId(data.killerId)} />
-                  <span>{getPlayerName(data.killerId)}</span>
+                  <ChampionDisplay championId={getChampionId(buildingKillData.killerId)} size={32} teamId={getTeamId(buildingKillData.killerId)} />
+                  <span>{getPlayerName(buildingKillData.killerId)}</span>
                 </div>
               </div>
-              {data.assistingParticipantIds && data.assistingParticipantIds.length > 0 && (
+              {buildingKillData.assistingParticipantIds && buildingKillData.assistingParticipantIds.length > 0 && (
                 <div style={{ marginBottom: '8px' }}>
                   <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '4px' }}>Assists</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                    {data.assistingParticipantIds.map((id: number) => (
+                    {buildingKillData.assistingParticipantIds.map((id: number) => (
                       <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <ChampionDisplay championId={getChampionId(id)} size={24} teamId={getTeamId(id)} />
                         <span style={{ fontSize: '11px' }}>{getPlayerName(id)}</span>
@@ -400,10 +439,10 @@ export default function EventDetails({ event, gameData, onClose }: EventDetailsP
                   </div>
                 </div>
               )}
-              {data.position && (
+              {buildingKillData.position && (
                 <div style={{ marginBottom: '8px' }}>
                   <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>
-                    Position: ({Math.round(data.position.x)}, {Math.round(data.position.y)})
+                    Position: ({Math.round(buildingKillData.position.x)}, {Math.round(buildingKillData.position.y)})
                   </div>
                 </div>
               )}
@@ -413,10 +452,11 @@ export default function EventDetails({ event, gameData, onClose }: EventDetailsP
         break;
       
       case 'skill':
-        const skillSlot = data.skillSlot === 1 ? 'Q' :
-                         data.skillSlot === 2 ? 'W' :
-                         data.skillSlot === 3 ? 'E' :
-                         data.skillSlot === 4 ? 'R' : `Slot ${data.skillSlot}`;
+        const skillData = data as SkillEvent;
+        const skillSlot = skillData.skillSlot === 1 ? 'Q' :
+                         skillData.skillSlot === 2 ? 'W' :
+                         skillData.skillSlot === 3 ? 'E' :
+                         skillData.skillSlot === 4 ? 'R' : `Slot ${skillData.skillSlot}`;
         return (
           <div>
             <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '12px', color }}>
@@ -425,22 +465,23 @@ export default function EventDetails({ event, gameData, onClose }: EventDetailsP
             <div style={{ marginBottom: '8px' }}>
               <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '4px' }}>Player</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <ChampionDisplay championId={getChampionId(data.participantId)} size={32} teamId={getTeamId(data.participantId)} />
-                <span>{getPlayerName(data.participantId)}</span>
+                <ChampionDisplay championId={getChampionId(skillData.participantId)} size={32} teamId={getTeamId(skillData.participantId)} />
+                <span>{getPlayerName(skillData.participantId)}</span>
               </div>
             </div>
             <div style={{ marginBottom: '8px' }}>
               <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>Skill: {skillSlot}</div>
             </div>
-            {data.levelUpType && (
+            {skillData.levelUpType && (
               <div style={{ marginBottom: '8px' }}>
-                <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>Type: {data.levelUpType}</div>
+                <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>Type: {skillData.levelUpType}</div>
               </div>
             )}
           </div>
         );
       
       case 'level':
+        const levelData = data as LevelEvent;
         return (
           <div>
             <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '12px', color }}>
@@ -449,17 +490,18 @@ export default function EventDetails({ event, gameData, onClose }: EventDetailsP
             <div style={{ marginBottom: '8px' }}>
               <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '4px' }}>Player</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <ChampionDisplay championId={getChampionId(data.participantId)} size={32} teamId={getTeamId(data.participantId)} />
-                <span>{getPlayerName(data.participantId)}</span>
+                <ChampionDisplay championId={getChampionId(levelData.participantId)} size={32} teamId={getTeamId(levelData.participantId)} />
+                <span>{getPlayerName(levelData.participantId)}</span>
               </div>
             </div>
             <div style={{ marginBottom: '8px' }}>
-              <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>New Level: {data.level}</div>
+              <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>New Level: {levelData.level}</div>
             </div>
           </div>
         );
       
       case 'item':
+        const itemData = data as ItemEvent;
         const itemAction = type === 'ITEM_PURCHASED' ? 'Purchased' :
                           type === 'ITEM_SOLD' ? 'Sold' :
                           type === 'ITEM_DESTROYED' ? 'Destroyed' :
@@ -472,51 +514,52 @@ export default function EventDetails({ event, gameData, onClose }: EventDetailsP
             <div style={{ marginBottom: '8px' }}>
               <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '4px' }}>Player</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <ChampionDisplay championId={getChampionId(data.participantId)} size={32} teamId={getTeamId(data.participantId)} />
-                <span>{getPlayerName(data.participantId)}</span>
+                <ChampionDisplay championId={getChampionId(itemData.participantId)} size={32} teamId={getTeamId(itemData.participantId)} />
+                <span>{getPlayerName(itemData.participantId)}</span>
               </div>
             </div>
             {type === 'ITEM_UNDO' ? (
               <div>
                 <div style={{ marginBottom: '8px' }}>
                   <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '4px' }}>Before</div>
-                  <ItemDisplay itemId={data.beforeId} size={32} />
+                  <ItemDisplay itemId={(itemData as ItemUndoEvent).beforeId} size={32} />
                 </div>
                 <div style={{ marginBottom: '8px' }}>
                   <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '4px' }}>After</div>
-                  <ItemDisplay itemId={data.afterId} size={32} />
+                  <ItemDisplay itemId={(itemData as ItemUndoEvent).afterId} size={32} />
                 </div>
-                {data.goldGain !== undefined && (
+                {(itemData as ItemUndoEvent).goldGain !== undefined && (
                   <div style={{ marginBottom: '8px' }}>
-                    <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>Gold Gain: {data.goldGain}</div>
+                    <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>Gold Gain: {(itemData as ItemUndoEvent).goldGain}</div>
                   </div>
                 )}
               </div>
             ) : (
               <div style={{ marginBottom: '8px' }}>
                 <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '4px' }}>Item</div>
-                <ItemDisplay itemId={data.itemId} size={32} />
+                <ItemDisplay itemId={(itemData as ItemPurchasedEvent | ItemSoldEvent | ItemDestroyedEvent).itemId} size={32} />
               </div>
             )}
           </div>
         );
       
       case 'feat':
-        const teamName = data.teamId === 100 ? 'Blue' : data.teamId === 200 ? 'Red' : `Team ${data.teamId}`;
+        const featData = data as FeatUpdateEvent;
+        const teamName = featData.teamId === 100 ? 'Blue' : featData.teamId === 200 ? 'Red' : `Team ${featData.teamId}`;
         let featDescription = '';
-        if (data.featType === 0) {
-          if (data.featValue === 1) featDescription = '1/3 kills for feat of warfare';
-          else if (data.featValue === 2) featDescription = '2/3 kills for feat of warfare';
-          else if (data.featValue === 3) featDescription = 'Taken feat of warfare';
-          else if (data.featValue === 1001) featDescription = 'Lost feat of warfare';
-        } else if (data.featType === 1) {
-          if (data.featValue === 1) featDescription = 'Taken first turret';
-          else if (data.featValue === 1001) featDescription = 'Lost first turret';
-        } else if (data.featType === 2) {
-          if (data.featValue === 1) featDescription = '1/3 Epic Monsters slain';
-          else if (data.featValue === 2) featDescription = '2/3 Epic Monsters slain';
-          else if (data.featValue === 3) featDescription = 'Taken feat of monster slaying';
-          else if (data.featValue === 1001) featDescription = 'Lost feat of monster slaying';
+        if (featData.featType === 0) {
+          if (featData.featValue === 1) featDescription = '1/3 kills for feat of warfare';
+          else if (featData.featValue === 2) featDescription = '2/3 kills for feat of warfare';
+          else if (featData.featValue === 3) featDescription = 'Taken feat of warfare';
+          else if (featData.featValue === 1001) featDescription = 'Lost feat of warfare';
+        } else if (featData.featType === 1) {
+          if (featData.featValue === 1) featDescription = 'Taken first turret';
+          else if (featData.featValue === 1001) featDescription = 'Lost first turret';
+        } else if (featData.featType === 2) {
+          if (featData.featValue === 1) featDescription = '1/3 Epic Monsters slain';
+          else if (featData.featValue === 2) featDescription = '2/3 Epic Monsters slain';
+          else if (featData.featValue === 3) featDescription = 'Taken feat of monster slaying';
+          else if (featData.featValue === 1001) featDescription = 'Lost feat of monster slaying';
         }
         
         return (
@@ -533,30 +576,31 @@ export default function EventDetails({ event, gameData, onClose }: EventDetailsP
               </div>
             )}
             <div style={{ marginBottom: '8px' }}>
-              <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>Feat Type: {data.featType}</div>
+              <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>Feat Type: {featData.featType}</div>
             </div>
             <div style={{ marginBottom: '8px' }}>
-              <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>Feat Value: {data.featValue}</div>
+              <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>Feat Value: {featData.featValue}</div>
             </div>
           </div>
         );
       
       case 'game':
+        const gameEventData = data as GameEvent;
         return (
           <div>
             <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '12px', color }}>
               {type}
             </div>
-            {data.winningTeam !== undefined && (
+            {gameEventData.winningTeam !== undefined && (
               <div style={{ marginBottom: '8px' }}>
                 <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>
-                  Winning Team: {data.winningTeam === 100 ? 'Blue' : data.winningTeam === 200 ? 'Red' : `Team ${data.winningTeam}`}
+                  Winning Team: {gameEventData.winningTeam === 100 ? 'Blue' : gameEventData.winningTeam === 200 ? 'Red' : `Team ${gameEventData.winningTeam}`}
                 </div>
               </div>
             )}
-            {data.gameId !== undefined && (
+            {gameEventData.gameId !== undefined && (
               <div style={{ marginBottom: '8px' }}>
-                <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>Game ID: {data.gameId}</div>
+                <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)' }}>Game ID: {gameEventData.gameId}</div>
               </div>
             )}
           </div>

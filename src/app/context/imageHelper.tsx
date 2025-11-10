@@ -205,73 +205,59 @@ export function ImageProvider({ children }: { children: ReactNode }) {
     );
 }
 
-export function getItemImageUrl(itemId: number) {
-    const { itemImageMap } = useImageContext();
+export function getItemImageUrl(itemId: number, itemImageMap: itemImageMap) {
     return "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/assets/items/icons2d/" + itemImageMap[itemId]?.iconPath.slice(43).toLowerCase() ;
 }
 
-export function getItemName(itemId: number) {
-    const { itemImageMap } = useImageContext();
+export function getItemName(itemId: number, itemImageMap: itemImageMap) {
     return itemImageMap[itemId]?.name;
 }
 
-export function getItemDescription(itemId: number) {
-    const { itemImageMap } = useImageContext();
+export function getItemDescription(itemId: number, itemImageMap: itemImageMap) {
     return itemImageMap[itemId]?.description;
 }
 
-export function getChampionImageUrl(championId: number) {
-    const { championImageMap } = useImageContext();
+export function getChampionImageUrl(championId: number, championImageMap: championImageMap) {
     return "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/" + championImageMap[championId]?.squarePortraitPath.slice(40).toLowerCase() ;
 }
 
-export function getPerkImageUrl(perkId: number) {
-    const { perkImageMap } = useImageContext();
+export function getPerkImageUrl(perkId: number, perkImageMap: perkImageMap) {
     return "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/perk-images/styles/" + perkImageMap[perkId]?.iconPath.slice(44).toLowerCase() ;
 }
 
-export function getPerkName(perkId: number) {
-    const { perkImageMap } = useImageContext();
+export function getPerkName(perkId: number, perkImageMap: perkImageMap) {
     return perkImageMap[perkId]?.name;
 }
 
-export function getPerkDescription(perkId: number) {
-    const { perkImageMap } = useImageContext();
+export function getPerkDescription(perkId: number, perkImageMap: perkImageMap) {
     return perkImageMap[perkId]?.longDesc;
 }
 
-export function getPerkStyleImageUrl(perkStyleId: number) {
-    const { perkStyleImageMap } = useImageContext();
+export function getPerkStyleImageUrl(perkStyleId: number, perkStyleImageMap: perkStyleImageMap) {
     return "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/perk-images/styles/" + perkStyleImageMap[perkStyleId]?.iconPath.slice(44).toLowerCase() ;
 }
 
-export function getPerkStyleName(perkStyleId: number) {
-    const { perkStyleImageMap } = useImageContext();
+export function getPerkStyleName(perkStyleId: number, perkStyleImageMap: perkStyleImageMap) {
     return perkStyleImageMap[perkStyleId]?.name;
 }
 
-export function getPerkStyleDescription(perkStyleId: number) {
-    const { perkStyleImageMap } = useImageContext();
+export function getPerkStyleDescription(perkStyleId: number, perkStyleImageMap: perkStyleImageMap) {
     return perkStyleImageMap[perkStyleId]?.tooltip;
 }
 
-export function getChampionName(championId: number) {
-    const { championImageMap } = useImageContext();
+export function getChampionName(championId: number, championImageMap: championImageMap) {
     return championImageMap[championId]?.name;
 }
 
-export function getSummonerImageUrl(summonerId: number) {
-    const { summonerSpellImageMap } = useImageContext();
+export function getSummonerImageUrl(summonerId: number, summonerSpellImageMap: summonerSpellImageMap) {
     return "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/data/spells/icons2d/" + summonerSpellImageMap[summonerId]?.iconPath.slice(42).toLowerCase() ;
 }
 
-export function getSummonerName(summonerId: number) {
-    const { summonerSpellImageMap } = useImageContext();
+export function getSummonerName(summonerId: number, summonerSpellImageMap: summonerSpellImageMap) {
     return summonerSpellImageMap[summonerId]?.name;
 }
 
-export function getSummonerDescription(summonerId: number) {
-    const { summonerSpellImageMap } = useImageContext();
+export function getSummonerDescription(summonerId: number, summonerSpellImageMap: summonerSpellImageMap) {
     return summonerSpellImageMap[summonerId]?.description;
 }
 

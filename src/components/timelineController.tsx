@@ -1,6 +1,22 @@
 "use client"
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { CombinedGameData, GameEvent, SkillEvent, KillEvent, LevelEvent, ItemEvent, FeatUpdateEvent } from '@/types/combinedGameData';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { 
+  CombinedGameData, 
+  GameEvent, 
+  SkillEvent, 
+  KillEvent, 
+  LevelEvent, 
+  ItemEvent, 
+  FeatUpdateEvent,
+  ChampionKillEvent,
+  ChampionSpecialKillEvent,
+  EliteMonsterKillEvent,
+  BuildingKillEvent,
+  ItemPurchasedEvent,
+  ItemSoldEvent,
+  ItemDestroyedEvent,
+  ItemUndoEvent
+} from '@/types/combinedGameData';
 import { ChampionDisplay } from './championDisplay';
 import { ItemDisplay } from './itemDisplay';
 
@@ -8,7 +24,7 @@ export interface TimelineEvent {
   timestamp: number;
   type: string;
   eventType: 'game' | 'skill' | 'kill' | 'level' | 'item' | 'feat';
-  data: any;
+  data: GameEvent | SkillEvent | KillEvent | LevelEvent | ItemEvent | FeatUpdateEvent;
 }
 
 interface TimelineControllerProps {
@@ -121,41 +137,54 @@ export default function TimelineController({
       const { eventType, data } = event;
       
       switch (eventType) {
-        case 'kill':
+        case 'kill': {
+          const killData = data as KillEvent;
           // Check if player is killer, victim, or assistant
-          if (data.killerId === selectedPlayerId || data.victimId === selectedPlayerId) return true;
+          if ('killerId' in killData && killData.killerId === selectedPlayerId) return true;
+          if ('victimId' in killData && killData.victimId === selectedPlayerId) return true;
           
           // Check assisting participant IDs (for all kill types that support it)
-          if (data.assistingParticipantIds && Array.isArray(data.assistingParticipantIds)) {
-            if (data.assistingParticipantIds.includes(selectedPlayerId)) return true;
+          if ('assistingParticipantIds' in killData && killData.assistingParticipantIds && Array.isArray(killData.assistingParticipantIds)) {
+            if (killData.assistingParticipantIds.includes(selectedPlayerId)) return true;
           }
           
           // Check if player dealt damage (support through damage)
-          if (data.victimDamageReceived && Array.isArray(data.victimDamageReceived)) {
-            const playerDealtDamage = data.victimDamageReceived.some(
-              (damage: any) => damage.participantId === selectedPlayerId
+          if ('victimDamageReceived' in killData && killData.victimDamageReceived && Array.isArray(killData.victimDamageReceived)) {
+            const playerDealtDamage = killData.victimDamageReceived.some(
+              (damage: { participantId: number }) => damage.participantId === selectedPlayerId
             );
             if (playerDealtDamage) return true;
           }
           
           // Check if player received damage from victim (for counter-attacks)
-          if (data.victimDamageDealt && Array.isArray(data.victimDamageDealt)) {
-            const playerReceivedDamage = data.victimDamageDealt.some(
-              (damage: any) => damage.participantId === selectedPlayerId
+          if ('victimDamageDealt' in killData && killData.victimDamageDealt && Array.isArray(killData.victimDamageDealt)) {
+            const playerReceivedDamage = killData.victimDamageDealt.some(
+              (damage: { participantId: number }) => damage.participantId === selectedPlayerId
             );
             if (playerReceivedDamage) return true;
           }
           
           return false;
-        case 'skill':
-        case 'level':
-        case 'item':
-          return data.participantId === selectedPlayerId;
-        case 'feat':
+        }
+        case 'skill': {
+          const skillData = data as SkillEvent;
+          return skillData.participantId === selectedPlayerId;
+        }
+        case 'level': {
+          const levelData = data as LevelEvent;
+          return levelData.participantId === selectedPlayerId;
+        }
+        case 'item': {
+          const itemData = data as ItemEvent;
+          return itemData.participantId === selectedPlayerId;
+        }
+        case 'feat': {
+          const featData = data as FeatUpdateEvent;
           // Show feat events if they're for the player's team
           if (!gameData) return false;
           const player = gameData.match_data?.participants?.find(p => p.participantId === selectedPlayerId);
-          return player?.teamId === data.teamId;
+          return player?.teamId === featData.teamId;
+        }
         case 'game':
           // Show all game events regardless of player filter
           return true;
@@ -234,9 +263,9 @@ export default function TimelineController({
     return gameData?.match_data?.participants?.find(p => p.participantId === id)?.riotIdGameName || `P${id}`;
   }
 
-  const getChampionId = (id: number) => {
+  const getChampionId = useCallback((id: number) => {
     return gameData?.match_data?.participants?.find(p => p.participantId === id)?.championId || -1;
-  }
+  }, [gameData]);
 
   const getTeamId = (id: number) => {
     return gameData?.match_data?.participants?.find(p => p.participantId === id)?.teamId;
@@ -342,15 +371,18 @@ export default function TimelineController({
       let label: string = type; // Default to type
       
       switch (eventType) {
-        case 'kill':
+        case 'kill': {
+          const killData = data as KillEvent;
           if (type === 'CHAMPION_KILL') {
-            label = `Kill: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}> → <PlayerName=${data.victimId}> <ChampionImage=${getChampionId(data.victimId)}:${data.victimId}>`;
+            const champKillData = killData as ChampionKillEvent;
+            label = `Kill: <PlayerName=${champKillData.killerId}> <ChampionImage=${getChampionId(champKillData.killerId)}:${champKillData.killerId}> → <PlayerName=${champKillData.victimId}> <ChampionImage=${getChampionId(champKillData.victimId)}:${champKillData.victimId}>`;
           } else if (type === 'CHAMPION_SPECIAL_KILL') {
-            if (data.killType === 'KILL_FIRST_BLOOD') {
-              label = `First Blood: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}>`;
-            } else if (data.killType === 'KILL_MULTI') {
+            const specialKillData = killData as ChampionSpecialKillEvent;
+            if (specialKillData.killType === 'KILL_FIRST_BLOOD') {
+              label = `First Blood: <PlayerName=${specialKillData.killerId}> <ChampionImage=${getChampionId(specialKillData.killerId)}:${specialKillData.killerId}>`;
+            } else if (specialKillData.killType === 'KILL_MULTI') {
               let multiKillLabel = '';
-              switch (data.multiKillLength) {
+              switch (specialKillData.multiKillLength) {
                 case 2:
                   multiKillLabel = `Double Kill`;
                   break;
@@ -367,131 +399,152 @@ export default function TimelineController({
                   multiKillLabel = `Multi Kill`;
                   break;
               }
-              label = `${multiKillLabel}: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}> `;
+              label = `${multiKillLabel}: <PlayerName=${specialKillData.killerId}> <ChampionImage=${getChampionId(specialKillData.killerId)}:${specialKillData.killerId}> `;
             } else {
-              label = `Kill: P${data.killerId} → P${data.victimId}`;
+              label = `Kill: P${specialKillData.killerId}`;
             }
           } else if (type === 'ELITE_MONSTER_KILL') {
-            if (data.monsterType === 'DRAGON') {
-              if (data.monsterSubType === 'AIR_DRAGON') {
-                label = `Air Dragon Slain: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}> `;
-              } else if (data.monsterSubType === 'EARTH_DRAGON') {
-                label = `Earth Dragon Slain: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}> `;
-              } else if (data.monsterSubType === 'FIRE_DRAGON') {
-                label = `Fire Dragon Slain: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}> `;
-              } else if (data.monsterSubType === 'WATER_DRAGON') {
-                label = `Water Dragon Slain: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}> `;
-              } else if (data.monsterSubType === 'CHEMTECH_DRAGON') {
-                label = `Chemtech Dragon Slain: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}> `;
-              } else if (data.monsterSubType === 'HEXTECH_DRAGON') {
-                label = `Hextech Dragon Slain: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}> `;
-              } else if (data.monsterSubType === 'ELDER_DRAGON') {
-                label = `Elder Dragon Slain: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}> `;
+            const monsterKillData = killData as EliteMonsterKillEvent;
+            if (monsterKillData.monsterType === 'DRAGON') {
+              if (monsterKillData.monsterSubType === 'AIR_DRAGON') {
+                label = `Air Dragon Slain: <PlayerName=${monsterKillData.killerId}> <ChampionImage=${getChampionId(monsterKillData.killerId)}:${monsterKillData.killerId}> `;
+              } else if (monsterKillData.monsterSubType === 'EARTH_DRAGON') {
+                label = `Earth Dragon Slain: <PlayerName=${monsterKillData.killerId}> <ChampionImage=${getChampionId(monsterKillData.killerId)}:${monsterKillData.killerId}> `;
+              } else if (monsterKillData.monsterSubType === 'FIRE_DRAGON') {
+                label = `Fire Dragon Slain: <PlayerName=${monsterKillData.killerId}> <ChampionImage=${getChampionId(monsterKillData.killerId)}:${monsterKillData.killerId}> `;
+              } else if (monsterKillData.monsterSubType === 'WATER_DRAGON') {
+                label = `Water Dragon Slain: <PlayerName=${monsterKillData.killerId}> <ChampionImage=${getChampionId(monsterKillData.killerId)}:${monsterKillData.killerId}> `;
+              } else if (monsterKillData.monsterSubType === 'CHEMTECH_DRAGON') {
+                label = `Chemtech Dragon Slain: <PlayerName=${monsterKillData.killerId}> <ChampionImage=${getChampionId(monsterKillData.killerId)}:${monsterKillData.killerId}> `;
+              } else if (monsterKillData.monsterSubType === 'HEXTECH_DRAGON') {
+                label = `Hextech Dragon Slain: <PlayerName=${monsterKillData.killerId}> <ChampionImage=${getChampionId(monsterKillData.killerId)}:${monsterKillData.killerId}> `;
+              } else if (monsterKillData.monsterSubType === 'ELDER_DRAGON') {
+                label = `Elder Dragon Slain: <PlayerName=${monsterKillData.killerId}> <ChampionImage=${getChampionId(monsterKillData.killerId)}:${monsterKillData.killerId}> `;
               } else {
-                label = `Dragon Slain: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}> `;
+                label = `Dragon Slain: <PlayerName=${monsterKillData.killerId}> <ChampionImage=${getChampionId(monsterKillData.killerId)}:${monsterKillData.killerId}> `;
               }
-            } else if (data.monsterType === 'RIFTHERALD') {
-              label = `Rift Herald Slain: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}>}`;
-            } else if (data.monsterType === 'BARON_NASHOR') {
-              label = `Baron Nashor Slain: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}>`;
-            } else if (data.monsterType === 'HORDE') {
-              label = `Void Grub Slain: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}> `;
+            } else if (monsterKillData.monsterType === 'RIFTHERALD') {
+              label = `Rift Herald Slain: <PlayerName=${monsterKillData.killerId}> <ChampionImage=${getChampionId(monsterKillData.killerId)}:${monsterKillData.killerId}>}`;
+            } else if (monsterKillData.monsterType === 'BARON_NASHOR') {
+              label = `Baron Nashor Slain: <PlayerName=${monsterKillData.killerId}> <ChampionImage=${getChampionId(monsterKillData.killerId)}:${monsterKillData.killerId}>`;
+            } else if (monsterKillData.monsterType === 'HORDE') {
+              label = `Void Grub Slain: <PlayerName=${monsterKillData.killerId}> <ChampionImage=${getChampionId(monsterKillData.killerId)}:${monsterKillData.killerId}> `;
             } else {
-              label = `Monster Slain: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}> ${data.monsterType} ${data.monsterSubType ? ` (${data.monsterSubType})` : ''}`;
+              label = `Monster Slain: <PlayerName=${monsterKillData.killerId}> <ChampionImage=${getChampionId(monsterKillData.killerId)}:${monsterKillData.killerId}> ${monsterKillData.monsterType} ${monsterKillData.monsterSubType ? ` (${monsterKillData.monsterSubType})` : ''}`;
             }
           } else if (type === 'BUILDING_KILL') {
-            if (data.buildingType === 'TOWER_BUILDING') {
-              if (data.towerType === 'NEXUS_TURRET') {
-                label = `Nexus Turret Destroyed: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}>`;
+            const buildingKillData = killData as BuildingKillEvent;
+            if (buildingKillData.buildingType === 'TOWER_BUILDING') {
+              if (buildingKillData.towerType === 'NEXUS_TURRET') {
+                label = `Nexus Turret Destroyed: <PlayerName=${buildingKillData.killerId}> <ChampionImage=${getChampionId(buildingKillData.killerId)}:${buildingKillData.killerId}>`;
               } else {
                 let position = '';
-                if (data.laneType === 'TOP_LANE') {
+                if (buildingKillData.laneType === 'TOP_LANE') {
                   position = 'Top';
-                } else if (data.laneType === 'MID_LANE') {
+                } else if (buildingKillData.laneType === 'MID_LANE') {
                   position = 'Mid';
-                } else if (data.laneType === 'BOT_LANE') {
+                } else if (buildingKillData.laneType === 'BOT_LANE') {
                   position = 'Bot';
                 }
                 let tier = '';
-                if (data.towerType === 'OUTER_TURRET') {
+                if (buildingKillData.towerType === 'OUTER_TURRET') {
                   tier = 'I';
-                } else if (data.towerType === 'INNER_TURRET') {
+                } else if (buildingKillData.towerType === 'INNER_TURRET') {
                   tier = 'II';
-                } else if (data.towerType === 'BASE_TURRET') {
+                } else if (buildingKillData.towerType === 'BASE_TURRET') {
                   tier = 'III';
                 }
-                label = `${position} Tier ${tier} Turret Destroyed: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}>`;
+                label = `${position} Tier ${tier} Turret Destroyed: <PlayerName=${buildingKillData.killerId}> <ChampionImage=${getChampionId(buildingKillData.killerId)}:${buildingKillData.killerId}>`;
               }
-            } else if (data.buildingType === 'INHIBITOR_BUILDING') {
-              label = `Inhibitor Destroyed: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}>`;
+            } else if (buildingKillData.buildingType === 'INHIBITOR_BUILDING') {
+              label = `Inhibitor Destroyed: <PlayerName=${buildingKillData.killerId}> <ChampionImage=${getChampionId(buildingKillData.killerId)}:${buildingKillData.killerId}>`;
             } else {
-              label = `Building Destroyed: <PlayerName=${data.killerId}> <ChampionImage=${getChampionId(data.killerId)}:${data.killerId}> ${data.buildingType}`;
+              label = `Building Destroyed: <PlayerName=${buildingKillData.killerId}> <ChampionImage=${getChampionId(buildingKillData.killerId)}:${buildingKillData.killerId}> ${buildingKillData.buildingType}`;
             }
           }
           break;
-        case 'skill':
+        }
+        case 'skill': {
+          const skillData = data as SkillEvent;
           let slot = '';
-          if (data.skillSlot === 1) {
+          if (skillData.skillSlot === 1) {
             slot = 'Q';
-          } else if (data.skillSlot === 2) {
+          } else if (skillData.skillSlot === 2) {
             slot = 'W';
-          } else if (data.skillSlot === 3) {
+          } else if (skillData.skillSlot === 3) {
             slot = 'E';
-          } else if (data.skillSlot === 4) {
+          } else if (skillData.skillSlot === 4) {
             slot = 'R';
           }
-          label = `<PlayerName=${data.participantId}> <ChampionImage=${getChampionId(data.participantId)}:${data.participantId}> Level Up: ${slot}`;
+          label = `<PlayerName=${skillData.participantId}> <ChampionImage=${getChampionId(skillData.participantId)}:${skillData.participantId}> Level Up: ${slot}`;
           break;
-        case 'level':
-          label = `<PlayerName=${data.participantId}> <ChampionImage=${getChampionId(data.participantId)}:${data.participantId}> Leveled Up: Level ${data.level}`;
+        }
+        case 'level': {
+          const levelData = data as LevelEvent;
+          label = `<PlayerName=${levelData.participantId}> <ChampionImage=${getChampionId(levelData.participantId)}:${levelData.participantId}> Leveled Up: Level ${levelData.level}`;
           break;
-        case 'item':
-          if (type === 'ITEM_PURCHASED') label = `<PlayerName=${data.participantId}> <ChampionImage=${getChampionId(data.participantId)}:${data.participantId}> Buy: <ItemImage=${data.itemId}>`;
-          else if (type === 'ITEM_SOLD') label = `<PlayerName=${data.participantId}> <ChampionImage=${getChampionId(data.participantId)}:${data.participantId}> Sell: <ItemImage=${data.itemId}>`;
-          else if (type === 'ITEM_DESTROYED') label = `<PlayerName=${data.participantId}> <ChampionImage=${getChampionId(data.participantId)}:${data.participantId}> Item Destroyed: <ItemImage=${data.itemId}>`;
-          else if (type === 'ITEM_UNDO') label = `<PlayerName=${data.participantId}> <ChampionImage=${getChampionId(data.participantId)}:${data.participantId}> Undo`;
-          else label = type;
+        }
+        case 'item': {
+          const itemData = data as ItemEvent;
+          if (type === 'ITEM_PURCHASED') {
+            const purchasedData = itemData as ItemPurchasedEvent;
+            label = `<PlayerName=${purchasedData.participantId}> <ChampionImage=${getChampionId(purchasedData.participantId)}:${purchasedData.participantId}> Buy: <ItemImage=${purchasedData.itemId}>`;
+          } else if (type === 'ITEM_SOLD') {
+            const soldData = itemData as ItemSoldEvent;
+            label = `<PlayerName=${soldData.participantId}> <ChampionImage=${getChampionId(soldData.participantId)}:${soldData.participantId}> Sell: <ItemImage=${soldData.itemId}>`;
+          } else if (type === 'ITEM_DESTROYED') {
+            const destroyedData = itemData as ItemDestroyedEvent;
+            label = `<PlayerName=${destroyedData.participantId}> <ChampionImage=${getChampionId(destroyedData.participantId)}:${destroyedData.participantId}> Item Destroyed: <ItemImage=${destroyedData.itemId}>`;
+          } else if (type === 'ITEM_UNDO') {
+            const undoData = itemData as ItemUndoEvent;
+            label = `<PlayerName=${undoData.participantId}> <ChampionImage=${getChampionId(undoData.participantId)}:${undoData.participantId}> Undo`;
+          } else {
+            label = type;
+          }
           break;
-        case 'feat':
+        }
+        case 'feat': {
+          const featData = data as FeatUpdateEvent;
           let team = '';
-          if (data.teamId === 100) {
+          if (featData.teamId === 100) {
             team = 'Blue';
-          } else if (data.teamId === 200) {
+          } else if (featData.teamId === 200) {
             team = 'Red';
           }
-          if (data.featType === 0) {
-            if (data.featValue === 1) {
+          if (featData.featType === 0) {
+            if (featData.featValue === 1) {
               label = `${team} team 1/3 kills for the feat of warfare`;
-            } else if (data.featValue === 2) {
+            } else if (featData.featValue === 2) {
               label = `${team} team 2/3 kills for the feat of warfare`;
-            } else if (data.featValue === 3) {
+            } else if (featData.featValue === 3) {
               label = `${team} team has taken the feat of warfare`;
-            } else if (data.featValue === 1001) {
+            } else if (featData.featValue === 1001) {
               label = `${team} team has lost the feat of warfare`;
             }
           }
-          else if (data.featType === 1) {
-            if (data.featValue === 1) {
+          else if (featData.featType === 1) {
+            if (featData.featValue === 1) {
               label = `${team} team has taken the first turret`;
-            } else if (data.featValue === 1001) {
+            } else if (featData.featValue === 1001) {
               label = `${team} team has lost the first turret`;
             }
           }
-          else if (data.featType === 2) {
-            if (data.featValue === 1) {
+          else if (featData.featType === 2) {
+            if (featData.featValue === 1) {
               label = `${team} team 1/3 Epic Monsters slain`;
-            } else if (data.featValue === 2) {
+            } else if (featData.featValue === 2) {
               label = `${team} team 2/3 Epic Monsters slain for the feat of domination`;
-            } else if (data.featValue === 3) {
+            } else if (featData.featValue === 3) {
               label = `${team} team has taken the feat of monster slaying`;
-            } else if (data.featValue === 1001) {
+            } else if (featData.featValue === 1001) {
               label = `${team} team has lost the feat of monster slaying`;
             }
           }
           else {
-            label = `Feat: Team ${data.teamId} Type ${data.featType}`;
+            label = `Feat: Team ${featData.teamId} Type ${featData.featType}`;
           }
           break;
+        }
         case 'game':
           label = type;
           break;
@@ -501,7 +554,7 @@ export default function TimelineController({
       
       return label;
     });
-  }, [allEvents]);
+  }, [allEvents, getChampionId]);
 
   // Pre-compute event titles (label + timestamp) to avoid function calls during render
   const eventTitles = useMemo(() => {
@@ -621,6 +674,11 @@ export default function TimelineController({
         <div style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '12px' }}>
           {visibleEvents.length} / {allEvents.length} events
         </div>
+        
+        <div style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '12px' }}>
+          CTRL+X toggle timeline and CTRL+B toggle controls
+        </div>
+        
       </div>
 
       {/* Timeline */}
@@ -652,7 +710,6 @@ export default function TimelineController({
 
           // Render events with offsets for simultaneous ones
           const renderedMarkers: React.ReactElement[] = [];
-          let visibleIndex = 0;
 
           eventsByTimestamp.forEach((events, timestamp) => {
             const percentage = (timestamp / gameDuration) * 100;
@@ -712,7 +769,6 @@ export default function TimelineController({
                   title={title + (onEventSelect ? ' (Click to select)' : '')}
                 />
               );
-              visibleIndex++;
             });
           });
 

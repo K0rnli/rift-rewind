@@ -1,8 +1,9 @@
-import { getChampionImageUrl, getChampionName, useImageSize, getSizeClasses } from "@/app/context/imageHelper";
+import { getChampionImageUrl, getChampionName, getSizeClasses, useImageContext } from "@/app/context/imageHelper";
 
 export function ChampionDisplay({ championId , size = 48, teamId }: { championId: number, size: 16 | 24 | 32 | 48 | 64, teamId?: number }) {
-    const championImageUrl = getChampionImageUrl(championId);
-    const championName = getChampionName(championId);
+    const { championImageMap } = useImageContext();
+    const championImageUrl = getChampionImageUrl(championId, championImageMap);
+    const championName = getChampionName(championId, championImageMap);
     const sizeClasses = getSizeClasses(size);
     
     // Determine ring color based on teamId

@@ -1,11 +1,12 @@
-import { getPerkImageUrl, getPerkName, useImageSize, getSizeClasses, getPerkStyleImageUrl, getPerkStyleName, getPerkDescription, getPerkStyleDescription } from "@/app/context/imageHelper";
+import { getPerkImageUrl, getPerkName, useImageSize, getSizeClasses, getPerkStyleImageUrl, getPerkStyleName, getPerkDescription, getPerkStyleDescription, useImageContext } from "@/app/context/imageHelper";
 import { parsePerkDescription } from "@/lib/textUtils";
 
 export function PerkDisplay({ perkId , size = 48 }: { perkId: number, size?: 16 | 24 | 32 | 48 | 64 }) {
-    const perkImageUrl = getPerkImageUrl(perkId);
-    const perkName = getPerkName(perkId);
+    const { perkImageMap } = useImageContext();
+    const perkImageUrl = getPerkImageUrl(perkId, perkImageMap);
+    const perkName = getPerkName(perkId, perkImageMap);
     const sizeClasses = getSizeClasses(size);
-    const perkDescription = getPerkDescription(perkId);
+    const perkDescription = getPerkDescription(perkId, perkImageMap);
     
     if (perkId === 0) {
         return (
@@ -42,10 +43,11 @@ export function PerkDisplay({ perkId , size = 48 }: { perkId: number, size?: 16 
 }
 
 export function PerkStyleDisplay({ perkStyleId , size = 48 }: { perkStyleId: number, size: 16 | 24 | 32 | 48 | 64 }) {
-    const perkStyleImageUrl = getPerkStyleImageUrl(perkStyleId);
-    const perkStyleName = getPerkStyleName(perkStyleId);
+    const { perkStyleImageMap } = useImageContext();
+    const perkStyleImageUrl = getPerkStyleImageUrl(perkStyleId, perkStyleImageMap);
+    const perkStyleName = getPerkStyleName(perkStyleId, perkStyleImageMap);
     const sizeClasses = getSizeClasses(size);
-    const perkStyleDescription = getPerkStyleDescription(perkStyleId);
+    const perkStyleDescription = getPerkStyleDescription(perkStyleId, perkStyleImageMap);
     
     if (perkStyleId === 0) {
         return (

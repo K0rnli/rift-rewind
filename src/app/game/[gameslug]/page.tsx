@@ -1,7 +1,7 @@
 "use client"
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { 
   initializeScene, 
@@ -23,9 +23,6 @@ import {
   setAnimationProgress as setAnimationProgressGlobal,
   updateAnimationMixers,
   ModelAnimationData,
-  setAnimationPose,
-  getAvailableAnimations,
-  hasAnimation,
   demonstrateAnimationStates,
   debugAnimationData
 } from './sceneInitializer';
@@ -37,15 +34,36 @@ import EventDetails from '@/components/eventDetails';
 import { getJsonFileFromS3 } from '@/app/actions/s3';
 import GameChat from '@/components/gameChat';
 
+type ModelPart = {
+  uuid: string;
+  name: string;
+  originalName: string;
+  type: string;
+  visible: boolean;
+  isMesh: boolean;
+  isGroup: boolean;
+  hasGeometry: boolean;
+  hasMaterial: boolean;
+  childrenCount: number;
+  depth: number;
+  object: THREE.Object3D;
+  materialInfo: {
+    materialName: string;
+    materialType: string;
+  } | null;
+};
+
 export default function Home() {
   const mountRef = useRef<HTMLDivElement>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const controlsRef = useRef<any>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const lockedAxesRef = useRef({ x: false, y: false, z: false });
   const animationFrameRef = useRef<number | null>(null);
   const isInitializedRef = useRef<boolean>(false);
+  const prevCameraPositionRef = useRef<{ x: number; y: number; z: number } | null>(null);
+  const prevFocalPointRef = useRef<{ x: number; y: number; z: number } | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   
   // Camera and focal point states
@@ -57,9 +75,11 @@ export default function Home() {
   
   // Object selection and manipulation states
   const [selectedObject, setSelectedObject] = useState<THREE.Object3D | null>(null);
+  const selectedObjectRef = useRef<THREE.Object3D | null>(null);
   const [selectableObjects, setSelectableObjects] = useState<THREE.Object3D[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const isDraggingRef = useRef(false);
   const [objectPosition, setObjectPosition] = useState({ x: 0, y: 0, z: 0 });
   const [inputObjectPosition, setInputObjectPosition] = useState({ x: 0, y: 0, z: 0 });
   const [objectRotation, setObjectRotation] = useState({ x: 0, y: 0, z: 0 });
@@ -70,7 +90,8 @@ export default function Home() {
   const [animationSpeed, setAnimationSpeed] = useState<number>(1.0);
   const [isLooping, setIsLooping] = useState<boolean>(false);
   const [animationProgress, setAnimationProgress] = useState<number>(0);
-  const [lastTime, setLastTime] = useState<number>(0);
+  const animationProgressRef = useRef<number>(0);
+  const lastTimeRef = useRef<number>(0);
   
   // Control panels visibility state
   const [panelsVisible, setPanelsVisible] = useState<boolean>(false);
@@ -168,15 +189,15 @@ export default function Home() {
 
 
   // Model parts visibility control functions
-  const [modelParts, setModelParts] = useState<{ [objectId: string]: any[] }>({});
+  const [modelParts, setModelParts] = useState<{ [objectId: string]: ModelPart[] }>({});
   const [expandedParts, setExpandedParts] = useState<{ [objectId: string]: { [partId: string]: boolean } }>({});
   
 
   // Current state for each object
-  const [objectStates, setObjectStates] = useState<{ [objectId: string]: string }>({});
+  const [objectStates] = useState<{ [objectId: string]: string }>({});
   
   const collectModelParts = (object: THREE.Object3D) => {
-    const parts: any[] = [];
+    const parts: ModelPart[] = [];
     
     object.traverse((child) => {
       if (child instanceof THREE.Mesh || child instanceof THREE.Group) {
@@ -312,22 +333,22 @@ export default function Home() {
   };
 
   // Function to apply default state to all models of a specific type
-  const applyDefaultStatesToModelType = (modelType: string) => {
+  const applyDefaultStatesToModelType = useCallback((modelType: string) => {
     const objects = selectableObjects.filter(obj => getModelType(obj.name || '') === modelType);
     objects.forEach(obj => {
       applyModelState(obj, obj.name || '', 'default');
     });
     console.log(`Applied default state to ${objects.length} ${modelType} objects`);
-  };
+  }, [selectableObjects]);
 
   // Function to apply default states to all models
-  const applyDefaultStatesToAllModels = () => {
+  const applyDefaultStatesToAllModels = useCallback(() => {
     const modelTypes = Object.keys(modelStates);
     modelTypes.forEach(modelType => {
       applyDefaultStatesToModelType(modelType);
     });
     console.log(`Applied default states to all model types: ${modelTypes.join(', ')}`);
-  };
+  }, [applyDefaultStatesToModelType]);
 
   // Function to set object state
   const setObjectState = (objectId: string, stateName: string) => {
@@ -389,6 +410,7 @@ export default function Home() {
     }
 
     setSelectedObject(object);
+    selectedObjectRef.current = object;
     
     if (object) {
       // Add highlight to selected object
@@ -505,6 +527,7 @@ export default function Home() {
     if (!selectedObject) return;
     stopAnimation(selectedObject.uuid);
     setAnimationProgress(0);
+    animationProgressRef.current = 0;
   };
 
   const handleSpeedChange = (speed: number) => {
@@ -516,6 +539,7 @@ export default function Home() {
 
   const handleProgressChange = (progress: number) => {
     setAnimationProgress(progress);
+    animationProgressRef.current = progress;
     if (selectedObject) {
       setAnimationProgressGlobal(selectedObject.uuid, progress);
     }
@@ -523,14 +547,15 @@ export default function Home() {
 
   const handleMouseDown = (event: MouseEvent) => {
     setIsDragging(true);
-    setDragStart({ x: event.clientX, y: event.clientY });
+    isDraggingRef.current = true;
+    dragStartRef.current = { x: event.clientX, y: event.clientY };
   };
 
-  const handleMouseMove = (event: MouseEvent) => {
-    if (!isDragging || !selectedObject || !cameraRef.current) return;
+  const handleMouseMove = useCallback((event: MouseEvent) => {
+    if (!isDraggingRef.current || !selectedObject || !cameraRef.current) return;
 
-    const deltaX = event.clientX - dragStart.x;
-    const deltaY = event.clientY - dragStart.y;
+    const deltaX = event.clientX - dragStartRef.current.x;
+    const deltaY = event.clientY - dragStartRef.current.y;
     
     // Convert screen movement to world movement
     const camera = cameraRef.current;
@@ -566,11 +591,12 @@ export default function Home() {
     setObjectRotation(rotInDegrees);
     setInputObjectRotation(rotInDegrees);
     
-    setDragStart({ x: event.clientX, y: event.clientY });
-  };
+    dragStartRef.current = { x: event.clientX, y: event.clientY };
+  }, [selectedObject]);
 
   const handleMouseUp = () => {
     setIsDragging(false);
+    isDraggingRef.current = false;
   };
 
   // Update position and rotation when selected object changes
@@ -642,7 +668,7 @@ export default function Home() {
         setIsLoading(false);
       });
     }
-  }, [gameData]);
+  }, [gameData, applyDefaultStatesToAllModels]);
 
   // Handle event selection from timeline
   const handleEventSelect = (event: TimelineEvent) => {
@@ -703,15 +729,17 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!mountRef.current) return;
+    // Copy mountRef.current to a variable at the start of the effect
+    const mountElement = mountRef.current;
+    if (!mountElement) return;
     
     // Prevent double initialization in StrictMode
     if (isInitializedRef.current) return;
     isInitializedRef.current = true;
     
     // Clear any existing content (in case of remount)
-    if (mountRef.current.hasChildNodes()) {
-      mountRef.current.innerHTML = '';
+    if (mountElement.hasChildNodes()) {
+      mountElement.innerHTML = '';
     }
 
     const scene = new THREE.Scene();
@@ -719,7 +747,7 @@ export default function Home() {
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     //renderer.setClearColor(0x87CEEB); // Sky blue background
-    mountRef.current.appendChild(renderer.domElement);
+    mountElement.appendChild(renderer.domElement);
 
     // Store references for external control
     cameraRef.current = camera;
@@ -768,32 +796,50 @@ export default function Home() {
       controls.update(); // Required for damping
       
       // Calculate delta time for animations
-      const deltaTime = lastTime ? (currentTime - lastTime) / 1000 : 0;
-      setLastTime(currentTime);
+      const deltaTime = lastTimeRef.current ? (currentTime - lastTimeRef.current) / 1000 : 0;
+      lastTimeRef.current = currentTime;
       
       // Update animation mixers
       updateAnimationMixers(deltaTime);
       
-      // Update animation progress for selected object
-      if (selectedObject && animationData[selectedObject.uuid]) {
-        const progress = getAnimationProgress(selectedObject.uuid);
-        setAnimationProgress(progress);
+      // Update animation progress for selected object (only when changed significantly)
+      const currentSelectedObject = selectedObjectRef.current;
+      if (currentSelectedObject && animationData[currentSelectedObject.uuid]) {
+        const progress = getAnimationProgress(currentSelectedObject.uuid);
+        if (Math.abs(progress - animationProgressRef.current) > 0.01) {
+          setAnimationProgress(progress);
+          animationProgressRef.current = progress;
+        }
       }
       
-      // Update camera position state
-      setCameraPosition({
+      // Update camera position state (only when changed significantly)
+      const newCameraPos = {
         x: Math.round(camera.position.x * 100) / 100,
         y: Math.round(camera.position.y * 100) / 100,
         z: Math.round(camera.position.z * 100) / 100
-      });
+      };
+      if (!prevCameraPositionRef.current || 
+          Math.abs(newCameraPos.x - prevCameraPositionRef.current.x) > 0.01 ||
+          Math.abs(newCameraPos.y - prevCameraPositionRef.current.y) > 0.01 ||
+          Math.abs(newCameraPos.z - prevCameraPositionRef.current.z) > 0.01) {
+        setCameraPosition(newCameraPos);
+        prevCameraPositionRef.current = newCameraPos;
+      }
       
-      // Update focal point state and move the dot
+      // Update focal point state and move the dot (only when changed significantly)
       const target = controls.target;
-      setFocalPoint({
+      const newFocalPoint = {
         x: Math.round(target.x * 100) / 100,
         y: Math.round(target.y * 100) / 100,
         z: Math.round(target.z * 100) / 100
-      });
+      };
+      if (!prevFocalPointRef.current || 
+          Math.abs(newFocalPoint.x - prevFocalPointRef.current.x) > 0.01 ||
+          Math.abs(newFocalPoint.y - prevFocalPointRef.current.y) > 0.01 ||
+          Math.abs(newFocalPoint.z - prevFocalPointRef.current.z) > 0.01) {
+        setFocalPoint(newFocalPoint);
+        prevFocalPointRef.current = newFocalPoint;
+      }
       focalDot.position.copy(target);
       const canvasAspect = renderer.domElement.clientWidth / renderer.domElement.clientHeight;
     const imageAspect = scene.background && scene.background instanceof THREE.Texture ? (scene.background as THREE.Texture).image?.width / (scene.background as THREE.Texture).image?.height : 1;
@@ -851,8 +897,9 @@ export default function Home() {
         }
       });
       
-      if (mountRef.current && renderer.domElement && mountRef.current.contains(renderer.domElement)) {
-        mountRef.current.removeChild(renderer.domElement);
+      // Use the captured mountElement from the effect scope
+      if (mountElement && renderer.domElement && mountElement.contains(renderer.domElement)) {
+        mountElement.removeChild(renderer.domElement);
       }
       
       renderer.dispose();
@@ -861,7 +908,7 @@ export default function Home() {
       isInitializedRef.current = false;
       sceneInitializedRef.current = false;
     };
-  }, []);
+  }, [handleMouseMove]);
 
   return (
     <div>
@@ -1192,11 +1239,17 @@ export default function Home() {
             }}
           >
             <option value="">-- Select an object --</option>
-            {selectableObjects.map((obj) => (
-              <option key={obj.uuid} value={obj.uuid}>
-                {obj.name || `Object ${obj.uuid.slice(0, 8)}`}
-              </option>
-            ))}
+            {[...selectableObjects]
+              .sort((a, b) => {
+                const nameA = a.name || `Object ${a.uuid.slice(0, 8)}`;
+                const nameB = b.name || `Object ${b.uuid.slice(0, 8)}`;
+                return nameA.localeCompare(nameB);
+              })
+              .map((obj) => (
+                <option key={obj.uuid} value={obj.uuid}>
+                  {obj.name || `Object ${obj.uuid.slice(0, 8)}`}
+                </option>
+              ))}
           </select>
           {selectedObject && (
             <div style={{ fontSize: '12px', color: '#ccc', marginTop: '5px' }}>
@@ -1444,7 +1497,7 @@ export default function Home() {
                       }}>
                         Type: {part.type}
                         {part.originalName && part.originalName !== part.name && (
-                          <span><br />Original Name: "{part.originalName}"</span>
+                          <span><br />Original Name: &quot;{part.originalName}&quot;</span>
                         )}
                         {part.hasGeometry && <span><br />Has Geometry</span>}
                         {part.hasMaterial && <span><br />Has Material</span>}

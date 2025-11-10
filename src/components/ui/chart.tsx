@@ -165,7 +165,7 @@ type TooltipPayloadItem = {
   value?: number | string
   dataKey?: string | number
   color?: string
-  payload?: any
+  payload?: Record<string, unknown>
   type?: string
 }
 
@@ -191,9 +191,9 @@ function ChartTooltipContent({
   indicator?: "line" | "dot" | "dashed"
   hideLabel?: boolean
   hideIndicator?: boolean
-  labelFormatter?: (value: any, payload: TooltipPayloadItem[]) => React.ReactNode
+  labelFormatter?: (value: React.ReactNode, payload: TooltipPayloadItem[]) => React.ReactNode
   labelClassName?: string
-  formatter?: (value: any, name: any, item: TooltipPayloadItem, index: number, payload: any) => React.ReactNode
+  formatter?: (value: number | string | undefined, name: string | number | undefined, item: TooltipPayloadItem, index: number, payload: Record<string, unknown> | undefined) => React.ReactNode
   color?: string
   nameKey?: string
   labelKey?: string
@@ -256,7 +256,7 @@ function ChartTooltipContent({
           .map((item: TooltipPayloadItem, index: number) => {
             const key = `${nameKey || item.name || item.dataKey || "value"}`
             const itemConfig = getPayloadConfigFromPayload(config, item, key)
-            const indicatorColor = color || item.payload.fill || item.color
+            const indicatorColor = color || (item.payload && typeof item.payload === 'object' && 'fill' in item.payload ? (item.payload.fill as string) : undefined) || item.color
 
             return (
               <div

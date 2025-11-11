@@ -9,6 +9,7 @@ const degreesToRadians = (degrees: number): number => {
   return THREE.MathUtils.degToRad(degrees);
 };
 
+const awsS3Url = `https://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME_ASSETS}.s3.${process.env.NEXT_PUBLIC_AWS_REGION}.amazonaws.com`;
 // Enhanced model state definitions with animation support
 export interface ModelStateConfig {
   // Animation configuration (optional)
@@ -1333,14 +1334,14 @@ interface ModelConfig {
 // Model configurations
 const modelConfigs: ModelConfig[] = [
   {
-    path: '/models/structures/blueNexus.glb',
+    url: `${awsS3Url}/models/structures/blueNexus.glb`,
     name: 'Blue Nexus',
     position: { x: -1504, y: 97, z: 1593 },
     rotation: { x: 0, y: 45, z: 0 },
     scale: { x: 1, y: 1, z: 1 }
   },
   {
-    path: '/models/structures/blueTurret.glb',
+    url: `${awsS3Url}/models/structures/blueTurret.glb`,
     name: 'Blue Turret',
     instances: [
       { name: 'Blue Turret Bot Nexus', position: { x: -2138, y: 97, z: 1708 }, rotation: { x: 0, y: -51, z: 0 } },
@@ -1358,7 +1359,7 @@ const modelConfigs: ModelConfig[] = [
     scale: { x: 1, y: 1, z: 1 }
   },
   {
-    path: '/models/structures/blueInhibitor.glb',
+    url: `${awsS3Url}/models/structures/blueInhibitor.glb`,
     name: 'Blue Inhibitor',
     instances: [
       { name: 'Blue Inhibitor Top', position: { x: -1121.24, y: 99, z: 3507.74 }, rotation: { x: 0, y: 90, z: 0 } },
@@ -1368,14 +1369,14 @@ const modelConfigs: ModelConfig[] = [
     scale: { x: 1, y: 1, z: 1 }
   },
   {
-    path: '/models/structures/redNexus.glb',
+    url: `${awsS3Url}/models/structures/redNexus.glb`,
     name: 'Red Nexus',
     position: { x: -13195.54, y: 97, z: 13171.67 },
     rotation: { x: 0, y: 0, z: 0 },
     scale: { x: 1, y: 1, z: 1 }
   },
   {
-    path: '/models/structures/redTurret.glb',
+    url: `${awsS3Url}/models/structures/redTurret.glb`,
     name: 'Red Turret',
     instances: [
       { name: 'Red Turret Top Nexus', position: { x: -12564.02, y: 97, z: 13031.35 }, rotation: { x: 0, y: -11, z: 0 } },
@@ -1393,7 +1394,7 @@ const modelConfigs: ModelConfig[] = [
     scale: { x: 1, y: 1, z: 1 }
   },
   {
-    path: '/models/structures/redInhibitor.glb',
+    url: `${awsS3Url}/models/structures/redInhibitor.glb`,
     name: 'Red Inhibitor',
     instances: [
       { name: 'Red Inhibitor Top', position: { x: -11211.09, y: 97, z: 13597.38 }, rotation: { x: 0, y: -90, z: 0 } },
@@ -1403,21 +1404,21 @@ const modelConfigs: ModelConfig[] = [
     scale: { x: 1, y: 1, z: 1 }
   },
   {
-    path: '/models/neutral objectives/baron.glb',
+    url: `${awsS3Url}/models/neutral objectives/baron.glb`,
     name: 'Baron',
     position: { x: -4906.65, y: 10, z: 10361.79 },
     rotation: { x: 0, y: 145, z: 0 },
     scale: { x: 1, y: 1, z: 1 }
   },
   {
-    path: '/models/neutral objectives/rift_herald.glb',
+    url: `${awsS3Url}/models/neutral objectives/rift_herald.glb`,
     name: 'Rift Herald',
     position: { x: -4816.65, y: -70, z: 10162.79 },
     rotation: { x: 0, y: 145, z: 0 },
     scale: { x: 1, y: 1, z: 1 }
   },
   {
-    path: '/models/neutral objectives/voidgrub.glb',
+    url: `${awsS3Url}/models/neutral objectives/voidgrub.glb`,
     name: 'Void Grub',
     instances: [
       { name: 'Void Grub 1', position: { x: -4745.65, y: -75, z: 10143.79 }, rotation: { x: 0, y: -37, z: 0 } },
@@ -1427,56 +1428,56 @@ const modelConfigs: ModelConfig[] = [
     scale: { x: 1, y: 1, z: 1 }
   },
   {
-    path: '/models/neutral objectives/dragon_air.glb',
+    url: `${awsS3Url}/models/neutral objectives/dragon_air.glb`,
     name: 'Dragon Air',
     position: { x: -9766.85, y: -75, z: 4342.72 },
     rotation: { x: 0, y: -37, z: 0 },
     scale: { x: 1, y: 1, z: 1 }
   },
   {
-    path: '/models/neutral objectives/dragon_earth.glb',
+    url: `${awsS3Url}/models/neutral objectives/dragon_earth.glb`,
     name: 'Dragon Earth',
     position: { x: -9766.85, y: -75, z: 4342.72 },
     rotation: { x: 0, y: -37, z: 0 },
     scale: { x: 1, y: 1, z: 1 }
   },
   {
-    path: '/models/neutral objectives/dragon_fire.glb',
+    url: `${awsS3Url}/models/neutral objectives/dragon_fire.glb`,
     name: 'Dragon Fire',
     position: { x: -9766.85, y: -75, z: 4342.72 },
     rotation: { x: 0, y: -37, z: 0 },
     scale: { x: 1, y: 1, z: 1 }
   },
   {
-    path: '/models/neutral objectives/dragon_water.glb',
+    url: `${awsS3Url}/models/neutral objectives/dragon_water.glb`,
     name: 'Dragon Water',
     position: { x: -9766.85, y: -75, z: 4342.72 },
     rotation: { x: 0, y: -37, z: 0 },
     scale: { x: 1, y: 1, z: 1 }
   },
   {
-    path: '/models/neutral objectives/dragon_chemtech.glb',
+    url: `${awsS3Url}/models/neutral objectives/dragon_chemtech.glb`,
     name: 'Dragon Chemtech',
     position: { x: -9766.85, y: -75, z: 4342.72 },
     rotation: { x: 0, y: -37, z: 0 },
     scale: { x: 1, y: 1, z: 1 }
   },
   {
-    path: '/models/neutral objectives/dragon_hextech.glb',
+    url: `${awsS3Url}/models/neutral objectives/dragon_hextech.glb`,
     name: 'Dragon Hextech',
     position: { x: -9766.85, y: -75, z: 4342.72 },
     rotation: { x: 0, y: -37, z: 0 },
     scale: { x: 1, y: 1, z: 1 }
   },
   {
-    path: '/models/neutral objectives/dragon_elder.glb',
+    url: `${awsS3Url}/models/neutral objectives/dragon_elder.glb`,
     name: 'Dragon Elder',
     position: { x: -9766.85, y: -75, z: 4342.72 },
     rotation: { x: 0, y: -37, z: 0 },
     scale: { x: 1, y: 1, z: 1 }
   },
   {
-    path: '/models/neutral objectives/atakhan.glb',
+    url: `${awsS3Url}/models/neutral objectives/atakhan.glb`,
     name: 'Atakhan',
     position: { x: -9766.85, y: -75, z: 4342.72 },
     rotation: { x: 0, y: -37, z: 0 },
@@ -1653,7 +1654,6 @@ export const initializeScene = async (
   gameData: CombinedGameData | null
 ): Promise<void> => {
   const loader = new GLTFLoader();
-  const awsS3Url = `https://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME_ASSETS}.s3.${process.env.NEXT_PUBLIC_AWS_REGION}.amazonaws.com`;
   const cubeTextureLoader = new THREE.CubeTextureLoader();
   
   // Create skybox using BoxGeometry
